@@ -1,0 +1,13 @@
+[package]
+name = "aardvark"
+version = "0.1.0"
+edition = "2018"
+authors = ["github.com/containers"]
+description = "A container-focused DNS server"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.34.0"
+env_logger = "0.9.0"
+log = "0.4.14"
