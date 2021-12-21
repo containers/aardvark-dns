@@ -1,0 +1,27 @@
+---
+
+test_task:
+  alias: "build_and_test"
+  name: "Build and Test"
+  container:
+    image: docker.io/library/rust
+  install_script: cargo build
+  test_script: cargo test
+
+validate_task:
+  alias: "validate"
+  name: "validate"
+  container:
+    image: docker.io/library/rust
+  install_script: rustup component add rustfmt
+  test_script: cargo-fmt --all
+
+success_task:
+  name: "Total success"
+  depends_on:
+    - "build_and_test"
+  clone_script: /bin/true
+  script: /bin/true
+  container: 
+    image: docker.io/library/alpine
+
