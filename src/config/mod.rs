@@ -71,7 +71,9 @@ pub fn parse_configs(
 
                 for entry in ctr_entry {
                     // Container network membership
-                    let ctr_networks = network_membership.entry(entry.id.clone()).or_insert(Vec::new());
+                    let ctr_networks = network_membership
+                        .entry(entry.id.clone())
+                        .or_insert(Vec::new());
                     ctr_networks.push(network_name.clone());
 
                     // Container IP addresses
@@ -80,7 +82,9 @@ pub fn parse_configs(
                     ctr_ips.append(&mut new_ctr_ips.clone());
 
                     // Network aliases to IPs map.
-                    let network_aliases = network_names.entry(network_name.clone()).or_insert(HashMap::new());
+                    let network_aliases = network_names
+                        .entry(network_name.clone())
+                        .or_insert(HashMap::new());
                     for alias in entry.aliases {
                         let alias_entries = network_aliases.entry(alias).or_insert(Vec::new());
                         alias_entries.append(&mut new_ctr_ips.clone());
@@ -101,15 +105,24 @@ pub fn parse_configs(
                     let ip_networks = ctrs.entry(ip).or_insert(Vec::new());
                     ip_networks.append(&mut s.clone());
                 }
-            },
-            None => return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Container ID {} has an entry in IPs table, but not network membership table", ctr_id),
-            )),
+            }
+            None => {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    format!(
+                    "Container ID {} has an entry in IPs table, but not network membership table",
+                    ctr_id
+                ),
+                ))
+            }
         }
     }
 
-    Ok((DNSBackend::new(&ctrs, &network_names), listen_ips_4, listen_ips_6))
+    Ok((
+        DNSBackend::new(&ctrs, &network_names),
+        listen_ips_4,
+        listen_ips_6,
+    ))
 }
 
 // A single entry in a config file
