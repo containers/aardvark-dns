@@ -1,2 +1,4 @@
 bin/
 target/
+targets/
+vendor/winapi*gnu*/lib/*.a
