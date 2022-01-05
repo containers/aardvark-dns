@@ -31,9 +31,9 @@ fn main() {
 
     match result {
         Ok(_) => {}
-        Err(_err) => {
+        Err(err) => {
+            println!("{}", err);
             std::process::exit(1);
         }
     }
 }
-
