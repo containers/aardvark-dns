@@ -1,5 +1,5 @@
 [package]
-name = "aardvark"
+name = "aardvark-dns"
 version = "0.1.0"
 edition = "2018"
 authors = ["github.com/containers"]
