@@ -16,7 +16,14 @@ use std::vec::Vec;
 // Returns a complete DNSBackend struct (all that is necessary for looks) and
 pub fn parse_configs(
     dir: &str,
-) -> Result<(DNSBackend, Vec<Ipv4Addr>, Vec<Ipv6Addr>), std::io::Error> {
+) -> Result<
+    (
+        DNSBackend,
+        HashMap<String, Vec<Ipv4Addr>>,
+        HashMap<String, Vec<Ipv6Addr>>,
+    ),
+    std::io::Error,
+> {
     if !metadata(dir)?.is_dir() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::Other,
@@ -27,8 +34,8 @@ pub fn parse_configs(
     let mut network_membership: HashMap<String, Vec<String>> = HashMap::new();
     let mut container_ips: HashMap<String, Vec<IpAddr>> = HashMap::new();
     let mut network_names: HashMap<String, HashMap<String, Vec<IpAddr>>> = HashMap::new();
-    let mut listen_ips_4: Vec<Ipv4Addr> = Vec::new();
-    let mut listen_ips_6: Vec<Ipv6Addr> = Vec::new();
+    let mut listen_ips_4: HashMap<String, Vec<Ipv4Addr>> = HashMap::new();
+    let mut listen_ips_6: HashMap<String, Vec<Ipv6Addr>> = HashMap::new();
 
     // Enumerate all files in the directory, read them in one by one.
     // Steadily build a map of what container has what IPs and what
@@ -64,8 +71,14 @@ pub fn parse_configs(
 
                 for ip in bind_ips {
                     match ip {
-                        IpAddr::V4(a) => listen_ips_4.push(a),
-                        IpAddr::V6(b) => listen_ips_6.push(b),
+                        IpAddr::V4(a) => listen_ips_4
+                            .entry(network_name.clone())
+                            .or_insert(Vec::new())
+                            .push(a),
+                        IpAddr::V6(b) => listen_ips_6
+                            .entry(network_name.clone())
+                            .or_insert(Vec::new())
+                            .push(b),
                     }
                 }
 
