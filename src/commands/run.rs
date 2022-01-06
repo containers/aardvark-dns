@@ -13,10 +13,10 @@ impl Run {
         Self {}
     }
 
-    pub fn exec(&self, input_file: String) -> Result<(), Error> {
-        debug!("Setting up aardvark server with input as {:?}", input_file);
+    pub fn exec(&self, input_dir: String) -> Result<(), Error> {
+        debug!("Setting up aardvark server with input directory as {:?}", input_dir);
 
-        if let Err(er) = serve::serve(&input_file) {
+        if let Err(er) = serve::serve(&input_dir) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Error starting server {}", er),
