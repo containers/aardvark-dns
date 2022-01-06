@@ -69,7 +69,7 @@ impl CoreDns {
     }
 
     pub fn update_record(&mut self, name: &str, addr: IpAddr, ttl: u32) {
-        let origin: Name = Name::parse(name, None).unwrap();
+        let origin: Name = Name::parse(name.clone(), None).unwrap();
         match addr {
             IpAddr::V4(ipv4) => {
                 self.authority.upsert(

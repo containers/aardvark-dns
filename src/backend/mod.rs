@@ -12,9 +12,9 @@ pub struct DNSBackend {
     // Map of IP -> Network membership.
     // Every container must have an entry in this map, otherwise we will not
     // service requests to the Podman TLD for it.
-    ip_mappings: HashMap<IpAddr, Vec<String>>,
+    pub ip_mappings: HashMap<IpAddr, Vec<String>>,
     // Map of network name to map of name to IP addresses.
-    name_mappings: HashMap<String, HashMap<String, Vec<IpAddr>>>,
+    pub name_mappings: HashMap<String, HashMap<String, Vec<IpAddr>>>,
     // Map of IP address to DNS server IPs to service queries not handled
     // directly.
     // Not implemented in initial version, we will always use host resolvers.
