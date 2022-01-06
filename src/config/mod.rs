@@ -77,7 +77,18 @@ pub fn parse_configs(
                     ctr_networks.push(network_name.clone());
 
                     // Container IP addresses
-                    let new_ctr_ips: Vec<IpAddr> = vec![IpAddr::V4(entry.v4), IpAddr::V6(entry.v6)];
+                    let mut new_ctr_ips: Vec<IpAddr> = Vec::new();
+                    if !entry.v4.is_none() {
+                        // unwrap is safe here since we already did a none check
+                        // and value is already parsed
+                        new_ctr_ips.push(IpAddr::V4(entry.v4.unwrap()));
+                    }
+                    if !entry.v6.is_none() {
+                        // unwrap is safe here since we already did a none check
+                        // and value is already parsed
+                        new_ctr_ips.push(IpAddr::V6(entry.v6.unwrap()));
+                    }
+
                     let ctr_ips = container_ips.entry(entry.id.clone()).or_insert(Vec::new());
                     ctr_ips.append(&mut new_ctr_ips.clone());
 
@@ -128,8 +139,8 @@ pub fn parse_configs(
 // A single entry in a config file
 struct CtrEntry {
     id: String,
-    v4: Ipv4Addr,
-    v6: Ipv6Addr,
+    v4: Option<Ipv4Addr>,
+    v6: Option<Ipv6Addr>,
     aliases: Vec<String>,
 }
 
@@ -143,15 +154,31 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
 
     // Split on newline, parse each line
     for line in content.split("\n") {
+        if line.is_empty() {
+            continue;
+        }
         if is_first {
             // First line is comma-separated V4 and V6
-            for ip in line.split(",") {
-                let local_ip = match ip.parse() {
+            if line.contains(",") {
+                for ip in line.split(",") {
+                    let local_ip = match ip.parse() {
+                        Ok(l) => l,
+                        Err(e) => {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("error parsing ip address {}: {}", ip, e),
+                            ))
+                        }
+                    };
+                    bind_addrs.push(local_ip);
+                }
+            } else {
+                let local_ip = match line.parse() {
                     Ok(l) => l,
                     Err(e) => {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
-                            format!("error parsing IP address {}: {}", ip, e),
+                            format!("error parsing ip address {}: {}", line, e),
                         ))
                     }
                 };
@@ -175,24 +202,33 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             ));
         }
 
-        let v4_addr: Ipv4Addr = match parts[1].parse() {
-            Ok(i) => i,
-            Err(e) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("error parsing IP address {}: {}", parts[1], e),
-                ))
-            }
-        };
-        let v6_addr: Ipv6Addr = match parts[2].parse() {
-            Ok(i) => i,
-            Err(e) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("error parsing IP address {}: {}", parts[1], e),
-                ))
-            }
-        };
+        let mut v4_addr: Option<Ipv4Addr> = None;
+        if !parts[1].is_empty() {
+            let ipv4: Ipv4Addr = match parts[1].parse() {
+                Ok(i) => i,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("error parsing IP address {}: {}", parts[1], e),
+                    ))
+                }
+            };
+            v4_addr = Some(ipv4);
+        }
+
+        let mut v6_addr: Option<Ipv6Addr> = None;
+        if !parts[2].is_empty() {
+            let ipv6: Ipv6Addr = match parts[2].parse() {
+                Ok(i) => i,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("error parsing IP address {}: {}", parts[2], e),
+                    ))
+                }
+            };
+            v6_addr = Some(ipv6);
+        }
         let aliases: Vec<String> = parts[3]
             .split(",")
             .map(|x| x.to_string())
