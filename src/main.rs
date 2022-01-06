@@ -5,9 +5,9 @@ use aardvark_dns::commands::run;
 #[derive(Clap, Debug)]
 #[clap(version = crate_version!())]
 struct Opts {
-    /// Instead of reading from STDIN, read the configuration from specified file.
+    /// Path to configuration directory
     #[clap(short, long)]
-    file: Option<String>,
+    path: Option<String>,
     /// Aardvark-dns trig command
     #[clap(subcommand)]
     subcmd: SubCommand,
@@ -16,7 +16,7 @@ struct Opts {
 #[derive(Clap, Debug)]
 enum SubCommand {
     #[clap(version = crate_version!())]
-    /// Runs the aardvark dns server with the specified configuration file.
+    /// Runs the aardvark dns server with the specified configuration directory.
     Run(run::Run),
 }
 
@@ -24,9 +24,9 @@ fn main() {
     env_logger::builder().format_timestamp(None).init();
     let opts = Opts::parse();
 
-    let file = opts.file.unwrap_or_else(|| String::from("/dev/stdin"));
+    let dir = opts.path.unwrap_or_else(|| String::from("/dev/stdin"));
     let result = match opts.subcmd {
-        SubCommand::Run(run) => run.exec(file),
+        SubCommand::Run(run) => run.exec(dir),
     };
 
     match result {
