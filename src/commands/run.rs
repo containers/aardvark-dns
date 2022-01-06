@@ -14,7 +14,10 @@ impl Run {
     }
 
     pub fn exec(&self, input_dir: String) -> Result<(), Error> {
-        debug!("Setting up aardvark server with input directory as {:?}", input_dir);
+        debug!(
+            "Setting up aardvark server with input directory as {:?}",
+            input_dir
+        );
 
         if let Err(er) = serve::serve(&input_dir) {
             return Err(std::io::Error::new(
