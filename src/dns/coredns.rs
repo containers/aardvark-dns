@@ -69,7 +69,10 @@ impl CoreDns {
     }
 
     pub fn update_record(&mut self, name: &str, addr: IpAddr, ttl: u32) {
-        let origin: Name = Name::parse(name.clone(), None).unwrap();
+        //Note: this is important we must accept `_` underscore in record name.
+        // If IDNA fails try parsing with utf8, this is `RFC 952` breach but expected.
+        // Accept create origin name from str_relaxed so we could use underscore
+        let origin: Name = Name::from_str_relaxed(name).unwrap();
         match addr {
             IpAddr::V4(ipv4) => {
                 self.authority.upsert(
