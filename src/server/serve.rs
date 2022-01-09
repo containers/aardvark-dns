@@ -4,24 +4,54 @@ use crate::dns::coredns::CoreDns;
 use log::debug;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
+use std::sync::Arc;
+use std::thread;
+
+// Will be only used by server to share backend
+// across threads
+#[derive(Clone)]
+struct DNSBackendWithArc {
+    pub backend: Arc<DNSBackend>,
+}
 
 pub fn serve(_config_path: &str) -> Result<(), std::io::Error> {
     match config::parse_configs(_config_path) {
-        Ok((_backend, listen_ip_v4, listen_ip_v6)) => {
+        Ok((backend, listen_ip_v4, listen_ip_v6)) => {
+            let mut thread_handles = vec![];
+
+            // Prevent memory duplication: since backend is immutable across threads so create Arc and share
+            let shareable_arc = DNSBackendWithArc {
+                backend: Arc::from(backend),
+            };
+
             debug!("Successfully parsed config");
             debug!("Listen v4 ip {:?}", listen_ip_v4);
             debug!("Listen v6 ip {:?}", listen_ip_v6);
 
-            // TODO: this is just a placeholder for single config just to make MVP working
-            // this will be replaced by actual logic
-            let ip_list = listen_ip_v4.get("podman").unwrap();
-            if let Err(e) = start_dns_server_v4("podman", ip_list[0], _backend) {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Error while invoking start_dns_server: {}", e),
-                ));
+            for (network_name, listen_ip_list) in listen_ip_v4 {
+                for ip in listen_ip_list {
+                    let network_name_clone = network_name.clone();
+                    let backend_arc_clone = shareable_arc.clone();
+                    let handle = thread::spawn(move || {
+                        if let Err(_e) =
+                            start_dns_server(&network_name_clone, IpAddr::V4(ip), backend_arc_clone)
+                        {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Error while invoking start_dns_server: {}", _e),
+                            ));
+                        }
+
+                        Ok(())
+                    });
+
+                    thread_handles.push(handle);
+                }
             }
 
+            for handle in thread_handles {
+                let _ = handle.join().unwrap();
+            }
             return Ok(());
         }
         Err(e) => {
@@ -34,19 +64,19 @@ pub fn serve(_config_path: &str) -> Result<(), std::io::Error> {
 }
 
 #[tokio::main]
-async fn start_dns_server_v4(
+async fn start_dns_server(
     name: &str,
-    addr: Ipv4Addr,
-    backend: DNSBackend,
+    addr: IpAddr,
+    backend_arc: DNSBackendWithArc,
 ) -> Result<(), std::io::Error> {
-    let forward = Ipv4Addr::new(1, 1, 1, 1);
+    let forward: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
     match CoreDns::new(
-        IpAddr::V4(addr),
+        addr,
         5533 as u32,
         name,
-        IpAddr::V4(forward),
+        forward,
         53 as u16,
-        backend,
+        backend_arc.backend,
     )
     .await
     {
