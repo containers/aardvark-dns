@@ -2,6 +2,7 @@ use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
@@ -21,7 +22,7 @@ pub struct CoreDns {
     port: u32,                    // server port
     authority: InMemoryAuthority, // server authority
     cl: AsyncClient,              //server client
-    backend: DNSBackend,          // server's data store
+    backend: Arc<DNSBackend>,     // server's data store
 }
 
 impl CoreDns {
@@ -31,7 +32,7 @@ impl CoreDns {
         name: &str,
         forward_addr: IpAddr,
         forward_port: u16,
-        backend: DNSBackend,
+        backend: Arc<DNSBackend>,
     ) -> anyhow::Result<Self> {
         let name: Name = Name::parse(name, None).unwrap();
         let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
