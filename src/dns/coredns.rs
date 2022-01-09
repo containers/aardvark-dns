@@ -1,12 +1,9 @@
+use crate::backend::DNSBackend;
+use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use std::net::{IpAddr, SocketAddr};
-use std::str::FromStr;
 use tokio::net::UdpSocket;
-use trust_dns_client::{
-    client::AsyncClient,
-    proto::{rr::dnssec::SupportedAlgorithms, xfer::SerialMessage},
-    rr::{LowerName, Name},
-};
+use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
     op::Message,
     rr::{DNSClass, RData, Record, RecordType},
@@ -15,11 +12,8 @@ use trust_dns_proto::{
     BufStreamHandle,
 };
 
-use log::{debug, error, warn};
-use trust_dns_server::{
-    authority::{Authority, ZoneType},
-    store::in_memory::InMemoryAuthority,
-};
+use log::{debug, error, trace, warn};
+use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
     name: Name,                   // name or origin
@@ -27,6 +21,7 @@ pub struct CoreDns {
     port: u32,                    // server port
     authority: InMemoryAuthority, // server authority
     cl: AsyncClient,              //server client
+    backend: DNSBackend,          // server's data store
 }
 
 impl CoreDns {
@@ -36,6 +31,7 @@ impl CoreDns {
         name: &str,
         forward_addr: IpAddr,
         forward_port: u16,
+        backend: DNSBackend,
     ) -> anyhow::Result<Self> {
         let name: Name = Name::parse(name, None).unwrap();
         let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
@@ -59,6 +55,7 @@ impl CoreDns {
             port,
             authority,
             cl,
+            backend,
         })
     }
 
@@ -116,41 +113,85 @@ impl CoreDns {
                     let src_address = msg.addr().clone();
                     let sender = sender.clone();
                     let (name, record_type, mut req) = parse_dns_msg(msg).unwrap();
+                    let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
 
-                    debug!("server orgin/name: {:?}", self.name);
-                    debug!("checking if authority has entry for: {:?}", name);
+                    // Create debug and trace info for key parameters.
+                    trace!("server name: {:?}", self.name.to_ascii());
+                    debug!("request source address: {:?}", src_address);
+                    trace!("requested record type: {:?}", record_type);
+                    debug!("checking if backend has entry for: {:?}", name);
+                    trace!(
+                        "server backend.name_mappings: {:?}",
+                        self.backend.name_mappings
+                    );
+                    trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
 
-                    match self
-                        .authority
-                        .lookup(
-                            &LowerName::from_str(name.as_str())?,
-                            record_type,
-                            false,
-                            SupportedAlgorithms::new(),
-                        )
-                        .await
-                    {
-                        Ok(lookup) => {
-                            debug!("not found in auth: {:?}", lookup);
-
-                            if let Some(record) = lookup.iter().next() {
-                                req.add_answer(Record::from_rdata(
-                                    Name::from_str(name.as_str())?,
-                                    600,
-                                    record.clone().into_data(),
-                                ));
-                            }
-
-                            reply(sender, src_address, &req);
+                    // attempt intra network resolution
+                    match self.backend.lookup(&src_address.ip(), name.as_str()) {
+                        // If we go success from backend lookup
+                        DNSResult::Success(_ip_vec) => {
+                            debug!("Found backend lookup");
+                            resolved_ip_list = _ip_vec;
                         }
-                        Err(_) => {
-                            debug!("Not found, forwarding dns request for {:?}", name);
-                            tokio::spawn(async move {
-                                if let Some(resp) = forward_dns_req(client, req.clone()).await {
-                                    reply(sender.clone(), src_address, &resp).unwrap();
+                        // For everything else assume the src_address was not in ip_mappings
+                        _ => {
+                            debug!(
+                                "No backend lookup found, try resolving in current resolvers entry"
+                            );
+                            match self.backend.name_mappings.get(&self.name.to_ascii()) {
+                                Some(container_mappings) => {
+                                    for (key, value) in container_mappings {
+                                        // convert key to fully qualified domain name
+                                        let mut key_fqdn = key.to_owned();
+                                        key_fqdn.push_str(".");
+                                        if key_fqdn == name.as_str() {
+                                            resolved_ip_list = value.to_vec();
+                                        }
+                                    }
                                 }
-                            });
+                                _ => { /*Nothing found request will be forwared to configured forwarder */
+                                }
+                            }
                         }
+                    }
+                    let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
+                    if resolved_ip_list.len() > 0
+                        && (record_type == RecordType::A || record_type == RecordType::AAAA)
+                    {
+                        for record_addr in resolved_ip_list {
+                            match record_addr {
+                                IpAddr::V4(ipv4) => {
+                                    req.add_answer(
+                                        Record::new()
+                                            .set_name(record_name.clone())
+                                            .set_ttl(86400)
+                                            .set_rr_type(RecordType::A)
+                                            .set_dns_class(DNSClass::IN)
+                                            .set_rdata(RData::A(ipv4))
+                                            .clone(),
+                                    );
+                                }
+                                IpAddr::V6(ipv6) => {
+                                    req.add_answer(
+                                        Record::new()
+                                            .set_name(record_name.clone())
+                                            .set_ttl(86400)
+                                            .set_rr_type(RecordType::AAAA)
+                                            .set_dns_class(DNSClass::IN)
+                                            .set_rdata(RData::AAAA(ipv6))
+                                            .clone(),
+                                    );
+                                }
+                            }
+                        }
+                        reply(sender, src_address, &req);
+                    } else {
+                        debug!("Not found, forwarding dns request for {:?}", name);
+                        tokio::spawn(async move {
+                            if let Some(resp) = forward_dns_req(client, req.clone()).await {
+                                reply(sender.clone(), src_address, &resp).unwrap();
+                            }
+                        });
                     }
                 }
 
