@@ -8,6 +8,9 @@ struct Opts {
     /// Path to configuration directory
     #[clap(short, long)]
     path: Option<String>,
+    /// Host port for aardvark servers, defaults to 5533
+    #[clap(short, long)]
+    port: Option<u32>,
     /// Aardvark-dns trig command
     #[clap(subcommand)]
     subcmd: SubCommand,
@@ -25,8 +28,9 @@ fn main() {
     let opts = Opts::parse();
 
     let dir = opts.path.unwrap_or_else(|| String::from("/dev/stdin"));
+    let port = opts.port.unwrap_or_else(|| 5533 as u32);
     let result = match opts.subcmd {
-        SubCommand::Run(run) => run.exec(dir),
+        SubCommand::Run(run) => run.exec(dir, port),
     };
 
     match result {
