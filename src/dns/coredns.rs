@@ -235,7 +235,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
             let mut name: String = "".to_string();
             let mut record_type: RecordType = RecordType::A;
 
-            debug!(
+            let parsed_msg = format!(
                 "[{}] parsed message body: {} edns: {}",
                 msg.id(),
                 msg.queries()
@@ -254,6 +254,8 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
                     .unwrap_or_else(|| Default::default(),),
                 msg.edns().is_some(),
             );
+
+            debug!("parsed message {:?}", parsed_msg);
 
             Some((name, record_type, msg))
         }

@@ -14,7 +14,8 @@ FLAGS:
     -V, --version    Print version information
 
 OPTIONS:
-    -p, --path <PATH>    Path to configuration directory
+    -c, --config <CONFIG>    Path to configuration directory
+    -p, --port <PORT>        Host port for aardvark servers, defaults to 5533
 
 SUBCOMMANDS:
     help    Print this message or the help of the given subcommand(s)
@@ -25,4 +26,10 @@ SUBCOMMANDS:
 
 ```console
 make
+```
+
+### Run Example
+
+```console
+RUST_LOG=trace ./bin/aardvark-dns --config src/test/config/podman/ --port 5533 run
 ```
