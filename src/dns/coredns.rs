@@ -2,7 +2,7 @@ use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
@@ -17,12 +17,13 @@ use log::{debug, error, trace, warn};
 use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
-    name: Name,                   // name or origin
-    address: IpAddr,              // server address
-    port: u32,                    // server port
-    authority: InMemoryAuthority, // server authority
-    cl: AsyncClient,              //server client
-    backend: Arc<DNSBackend>,     // server's data store
+    name: Name,                    // name or origin
+    address: IpAddr,               // server address
+    port: u32,                     // server port
+    authority: InMemoryAuthority,  // server authority
+    cl: AsyncClient,               //server client
+    backend: Arc<DNSBackend>,      // server's data store
+    kill_switch: Arc<Mutex<bool>>, // global kill_swtich
 }
 
 impl CoreDns {
@@ -33,6 +34,7 @@ impl CoreDns {
         forward_addr: IpAddr,
         forward_port: u16,
         backend: Arc<DNSBackend>,
+        kill_switch: Arc<Mutex<bool>>,
     ) -> anyhow::Result<Self> {
         let name: Name = Name::parse(name, None).unwrap();
         let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
@@ -57,12 +59,12 @@ impl CoreDns {
             authority,
             cl,
             backend,
+            kill_switch,
         })
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
         tokio::try_join!(self.register_port())?;
-
         Ok(())
     }
 
@@ -108,6 +110,9 @@ impl CoreDns {
         let (mut receiver, sender) = UdpStream::with_bound(socket);
 
         while let Some(message) = receiver.next().await {
+            if *self.kill_switch.lock().unwrap() {
+                return Ok(());
+            }
             match message {
                 Ok(msg) => {
                     let client = self.cl.clone();
@@ -126,6 +131,10 @@ impl CoreDns {
                         self.backend.name_mappings
                     );
                     trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
+                    trace!(
+                        "server backend kill switch: {:?}",
+                        self.kill_switch.lock().unwrap()
+                    );
 
                     // attempt intra network resolution
                     match self.backend.lookup(&src_address.ip(), name.as_str()) {
@@ -226,7 +235,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
             let mut name: String = "".to_string();
             let mut record_type: RecordType = RecordType::A;
 
-            debug!(
+            let parsed_msg = format!(
                 "[{}] parsed message body: {} edns: {}",
                 msg.id(),
                 msg.queries()
@@ -245,6 +254,8 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
                     .unwrap_or_else(|| Default::default(),),
                 msg.edns().is_some(),
             );
+
+            debug!("parsed message {:?}", parsed_msg);
 
             Some((name, record_type, msg))
         }

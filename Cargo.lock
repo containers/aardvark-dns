@@ -11,6 +11,7 @@ dependencies = [
  "env_logger 0.9.0",
  "futures-util",
  "log",
+ "signal-hook",
  "tokio",
  "trust-dns-client",
  "trust-dns-proto",
@@ -636,6 +637,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "signal-hook"
+version = "0.3.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "647c97df271007dcea485bb74ffdb57f2e683f1306c854f468a0c244badabf2d"
+dependencies = [
+ "libc",
+ "signal-hook-registry",
 ]
 
 [[package]]
