@@ -78,6 +78,32 @@ fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> 
                 }
             }
 
+            for (network_name, listen_ip_list) in listen_ip_v6 {
+                for ip in listen_ip_list {
+                    let network_name_clone = network_name.clone();
+                    let backend_arc_clone = shareable_arc.clone();
+                    let kill_switch_arc_clone = Arc::clone(&kill_switch);
+                    let handle = thread::spawn(move || {
+                        if let Err(_e) = start_dns_server(
+                            &network_name_clone,
+                            IpAddr::V6(ip),
+                            backend_arc_clone,
+                            kill_switch_arc_clone,
+                            port,
+                        ) {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("Error while invoking start_dns_server: {}", _e),
+                            ));
+                        }
+
+                        Ok(())
+                    });
+
+                    thread_handles.push(handle);
+                }
+            }
+
             let handle_signal = thread::spawn(move || {
                 for sig in signals.forever() {
                     info!("Received SIGHUP will refresh servers: {:?}", sig);
