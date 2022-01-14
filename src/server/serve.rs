@@ -1,7 +1,7 @@
 use crate::backend::DNSBackend;
 use crate::config;
 use crate::dns::coredns::CoreDns;
-use log::{debug, info};
+use log::{debug, error, info};
 use signal_hook::consts::signal::SIGHUP;
 use signal_hook::iterator::Signals;
 use std::net::IpAddr;
@@ -65,6 +65,7 @@ fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> 
                             kill_switch_arc_clone,
                             port,
                         ) {
+                            error!("Unable to start server {}", _e);
                             return Err(std::io::Error::new(
                                 std::io::ErrorKind::Other,
                                 format!("Error while invoking start_dns_server: {}", _e),
