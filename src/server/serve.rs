@@ -1,5 +1,6 @@
 use crate::backend::DNSBackend;
 use crate::config;
+use crate::config::constants::AARDVARK_PID_FILE;
 use crate::dns::coredns::CoreDns;
 use log::{debug, error, info};
 use signal_hook::consts::signal::SIGHUP;
@@ -9,6 +10,10 @@ use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use std::fs::File;
+use std::io::prelude::*;
+use std::path::Path;
+use std::process;
 use std::str::FromStr;
 use std::time::Duration;
 use trust_dns_client::client::{Client, SyncClient};
@@ -22,9 +27,33 @@ struct DNSBackendWithArc {
     pub backend: Arc<DNSBackend>,
 }
 
-pub fn serve(_config_path: &str, port: u32) -> Result<(), std::io::Error> {
+pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
+    // before serving write its pid to _config_path so other process can notify
+    // aardvark of data change.
+    let path = Path::new(config_path).join(AARDVARK_PID_FILE);
+    let mut pid_file = match File::create(&path) {
+        Err(err) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Unable to get process pid: {}", err),
+            ));
+        }
+        Ok(file) => file,
+    };
+
+    let server_pid = process::id().to_string();
+    match pid_file.write_all(server_pid.as_bytes()) {
+        Err(err) => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                format!("Unable to write pid to file: {}", err),
+            ));
+        }
+        Ok(_) => {}
+    }
+
     loop {
-        if let Err(er) = core_serve_loop(_config_path, port) {
+        if let Err(er) = core_serve_loop(config_path, port) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Server Error {}", er),
