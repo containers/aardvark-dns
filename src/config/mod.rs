@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::{metadata, read_dir, read_to_string};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::vec::Vec;
+pub mod constants;
 
 // Parse configuration files in the given directory.
 // Configuration files are formatted as follows:
@@ -50,6 +51,11 @@ pub fn parse_configs(
         // rate.
         match config {
             Ok(cfg) => {
+                // dont process aardvark pid files
+                // unwrap is safe here since file already exists
+                if cfg.path().file_name().unwrap() == constants::AARDVARK_PID_FILE {
+                    continue;
+                }
                 let (bind_ips, ctr_entry) = parse_config(&(cfg.path().as_path()))?;
 
                 let network_name: String = match cfg.path().file_name() {
