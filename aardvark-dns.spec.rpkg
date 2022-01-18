@@ -24,7 +24,7 @@ Version:    {{{ git_dir_version }}}
 Release:    1%{?dist}
 
 # Basic description of the package
-Summary: OCI network stack
+Summary: Authoritative DNS server for A/AAAA container records
 
 # License. We assume GPLv2+ here.
 License:   ASL 2.0
@@ -49,7 +49,7 @@ BuildArch:      noarch
 %endif
 
 %global _description %{expand:
-Authoritative DNS server for A/AAAA container records.}
+%{summary}}
 
 %description %{_description}
 
