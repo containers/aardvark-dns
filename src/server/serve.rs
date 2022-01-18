@@ -72,6 +72,13 @@ fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> 
             let mut thread_handles = vec![];
             let kill_switch = Arc::new(Mutex::new(false));
 
+            // kill server if listen_ip's are empty
+            if listen_ip_v4.is_empty() && listen_ip_v6.is_empty() {
+                //no configuration found kill the server
+                println!("No configuration found stopping the sever");
+                process::exit(0);
+            }
+
             // Prevent memory duplication: since backend is immutable across threads so create Arc and share
             let shareable_arc = DNSBackendWithArc {
                 backend: Arc::from(backend),
