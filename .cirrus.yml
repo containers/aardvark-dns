@@ -1,13 +1,5 @@
 ---
 
-test_task:
-  alias: "build_and_test"
-  name: "Build and Test"
-  container:
-    image: docker.io/library/rust
-  install_script: cargo build
-  test_script: cargo test
-
 validate_task:
   alias: "validate"
   name: "validate"
@@ -16,12 +8,36 @@ validate_task:
   install_script: rustup component add rustfmt
   test_script: cargo-fmt --all
 
+
+test_task:
+  alias: "build_and_test"
+  name: "Build and Test"
+  container:
+    image: docker.io/library/rust
+  build_script:
+    - make debug=1
+    - make
+  test_script: cargo test
+  # TODO: Artifact collection should happen in "success" task.
+  # Artifact archive always uses relative paths, ensure archive is clean.
+  artifacts_prep_script:
+    - mkdir /tmp/artifacts
+    - mv bin/aardvark-dns* /tmp/artifacts/
+    - rm -rf ./aardvark-dns*
+    - mv /tmp/artifacts/aardvark-dns* ./
+  # Upload tested binary for consumption downstream
+  # https://cirrus-ci.org/guide/writing-tasks/#artifacts-instruction
+  binary_artifacts:
+    path: ./aardvark-dns*
+
+
 success_task:
   name: "Total success"
   depends_on:
+    - "validate"
     - "build_and_test"
   clone_script: /bin/true
   script: /bin/true
-  container: 
+  container:
     image: docker.io/library/alpine
 
