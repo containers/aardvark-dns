@@ -169,9 +169,8 @@ fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> 
                 }
             }
 
-            for handle in thread_handles {
-                let _ = handle.join().unwrap();
-            }
+            // Don't wait for child threads since interface can be removed before
+            // as  well in some environments. Just rely on kill swtich to kill threads.
             return Ok(());
         }
         Err(e) => {
