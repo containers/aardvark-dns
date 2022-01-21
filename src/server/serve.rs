@@ -52,6 +52,10 @@ pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
         Ok(_) => {}
     }
 
+    // rust closes the fd only when it leaves the scope, since this is
+    // the main loop it will never happen so we have to manually close it
+    drop(pid_file);
+
     loop {
         if let Err(er) = core_serve_loop(config_path, port) {
             return Err(std::io::Error::new(
