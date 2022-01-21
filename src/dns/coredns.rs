@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
-    op::Message,
+    op::{Message, MessageType},
     rr::{DNSClass, RData, Record, RecordType},
     udp::{UdpClientStream, UdpStream},
     xfer::{dns_handle::DnsHandle, DnsRequest},
@@ -215,7 +215,9 @@ impl CoreDns {
 
 fn reply(mut sender: BufStreamHandle, socket_addr: SocketAddr, msg: &Message) -> Option<()> {
     let id = msg.id();
-    let response = SerialMessage::new(msg.to_vec().ok()?, socket_addr);
+    let mut msg_mut = msg.clone();
+    msg_mut.set_message_type(MessageType::Response);
+    let response = SerialMessage::new(msg_mut.to_vec().ok()?, socket_addr);
 
     match sender.send(response) {
         Ok(_) => {
