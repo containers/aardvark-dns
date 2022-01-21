@@ -5,6 +5,7 @@ use crate::dns::coredns::CoreDns;
 use log::{debug, error, info};
 use signal_hook::consts::signal::SIGHUP;
 use signal_hook::iterator::Signals;
+use std::fs;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
@@ -52,6 +53,10 @@ pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
         Ok(_) => {}
     }
 
+    // rust closes the fd only when it leaves the scope, since this is
+    // the main loop it will never happen so we have to manually close it
+    drop(pid_file);
+
     loop {
         if let Err(er) = core_serve_loop(config_path, port) {
             return Err(std::io::Error::new(
@@ -62,10 +67,10 @@ pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
     }
 }
 
-fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> {
+fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
     let mut signals = Signals::new(&[SIGHUP])?;
 
-    match config::parse_configs(_config_path) {
+    match config::parse_configs(config_path) {
         Ok((backend, listen_ip_v4, listen_ip_v6)) => {
             let listen_ip_v4_clone = listen_ip_v4.clone();
             let listen_ip_v6_clone = listen_ip_v6.clone();
@@ -75,7 +80,15 @@ fn core_serve_loop(_config_path: &str, port: u32) -> Result<(), std::io::Error> 
             // kill server if listen_ip's are empty
             if listen_ip_v4.is_empty() && listen_ip_v6.is_empty() {
                 //no configuration found kill the server
-                println!("No configuration found stopping the sever");
+                info!("No configuration found stopping the sever");
+                let path = Path::new(config_path).join(AARDVARK_PID_FILE);
+                match fs::remove_file(path) {
+                    Ok(_) => {}
+                    Err(err) => {
+                        error!("failed to remove the pid file: {}", &err);
+                        process::exit(1);
+                    }
+                }
                 process::exit(0);
             }
 
