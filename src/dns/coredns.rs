@@ -4,6 +4,7 @@ use futures_util::StreamExt;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
+use tokio::time::{self, Duration};
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
     op::{Message, MessageType},
@@ -109,103 +110,113 @@ impl CoreDns {
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
         let (mut receiver, sender) = UdpStream::with_bound(socket);
 
-        while let Some(message) = receiver.next().await {
-            if *self.kill_switch.lock().unwrap() {
-                return Ok(());
-            }
-            match message {
-                Ok(msg) => {
-                    let client = self.cl.clone();
-                    let src_address = msg.addr().clone();
-                    let sender = sender.clone();
-                    let (name, record_type, mut req) = parse_dns_msg(msg).unwrap();
-                    let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
+        // following delay is async and is responsible for invkoing kill_switch
+        let non_blocking_delay = time::sleep(Duration::from_millis(50));
+        tokio::pin!(non_blocking_delay);
 
-                    // Create debug and trace info for key parameters.
-                    trace!("server name: {:?}", self.name.to_ascii());
-                    debug!("request source address: {:?}", src_address);
-                    trace!("requested record type: {:?}", record_type);
-                    debug!("checking if backend has entry for: {:?}", name);
-                    trace!(
-                        "server backend.name_mappings: {:?}",
-                        self.backend.name_mappings
-                    );
-                    trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
-                    trace!(
-                        "server backend kill switch: {:?}",
-                        self.kill_switch.lock().unwrap()
-                    );
+        loop {
+            tokio::select! {
+                _ = &mut non_blocking_delay => {
+                    if *self.kill_switch.lock().unwrap() {
+                        break;
+                    }
+                },
+                v = receiver.next() => {
+                    match v.unwrap() {
+                        Ok(msg) => {
+                            let client = self.cl.clone();
+                            let src_address = msg.addr().clone();
+                            let sender = sender.clone();
+                            let (name, record_type, mut req) = parse_dns_msg(msg).unwrap();
+                            let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
 
-                    // attempt intra network resolution
-                    match self.backend.lookup(&src_address.ip(), name.as_str()) {
-                        // If we go success from backend lookup
-                        DNSResult::Success(_ip_vec) => {
-                            debug!("Found backend lookup");
-                            resolved_ip_list = _ip_vec;
-                        }
-                        // For everything else assume the src_address was not in ip_mappings
-                        _ => {
-                            debug!(
+                            // Create debug and trace info for key parameters.
+                            trace!("server name: {:?}", self.name.to_ascii());
+                            debug!("request source address: {:?}", src_address);
+                            trace!("requested record type: {:?}", record_type);
+                            debug!("checking if backend has entry for: {:?}", name);
+                            trace!(
+                                "server backend.name_mappings: {:?}",
+                                self.backend.name_mappings
+                            );
+                            trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
+                            trace!(
+                                "server backend kill switch: {:?}",
+                                self.kill_switch.lock().unwrap()
+                            );
+
+                            // attempt intra network resolution
+                            match self.backend.lookup(&src_address.ip(), name.as_str()) {
+                                // If we go success from backend lookup
+                                DNSResult::Success(_ip_vec) => {
+                                    debug!("Found backend lookup");
+                                    resolved_ip_list = _ip_vec;
+                                }
+                                // For everything else assume the src_address was not in ip_mappings
+                                _ => {
+                                    debug!(
                                 "No backend lookup found, try resolving in current resolvers entry"
                             );
-                            match self.backend.name_mappings.get(&self.name.to_ascii()) {
-                                Some(container_mappings) => {
-                                    for (key, value) in container_mappings {
-                                        // convert key to fully qualified domain name
-                                        let mut key_fqdn = key.to_owned();
-                                        key_fqdn.push_str(".");
-                                        if key_fqdn == name.as_str() {
-                                            resolved_ip_list = value.to_vec();
+                                    match self.backend.name_mappings.get(&self.name.to_ascii()) {
+                                        Some(container_mappings) => {
+                                            for (key, value) in container_mappings {
+                                                // convert key to fully qualified domain name
+                                                let mut key_fqdn = key.to_owned();
+                                                key_fqdn.push_str(".");
+                                                if key_fqdn == name.as_str() {
+                                                    resolved_ip_list = value.to_vec();
+                                                }
+                                            }
+                                        }
+                                        _ => { /*Nothing found request will be forwared to configured forwarder */
                                         }
                                     }
                                 }
-                                _ => { /*Nothing found request will be forwared to configured forwarder */
+                            }
+                            let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
+                            if resolved_ip_list.len() > 0
+                                && (record_type == RecordType::A || record_type == RecordType::AAAA)
+                            {
+                                for record_addr in resolved_ip_list {
+                                    match record_addr {
+                                        IpAddr::V4(ipv4) => {
+                                            req.add_answer(
+                                                Record::new()
+                                                    .set_name(record_name.clone())
+                                                    .set_ttl(86400)
+                                                    .set_rr_type(RecordType::A)
+                                                    .set_dns_class(DNSClass::IN)
+                                                    .set_rdata(RData::A(ipv4))
+                                                    .clone(),
+                                            );
+                                        }
+                                        IpAddr::V6(ipv6) => {
+                                            req.add_answer(
+                                                Record::new()
+                                                    .set_name(record_name.clone())
+                                                    .set_ttl(86400)
+                                                    .set_rr_type(RecordType::AAAA)
+                                                    .set_dns_class(DNSClass::IN)
+                                                    .set_rdata(RData::AAAA(ipv6))
+                                                    .clone(),
+                                            );
+                                        }
+                                    }
                                 }
+                                reply(sender, src_address, &req);
+                            } else {
+                                debug!("Not found, forwarding dns request for {:?}", name);
+                                tokio::spawn(async move {
+                                    if let Some(resp) = forward_dns_req(client, req.clone()).await {
+                                        reply(sender.clone(), src_address, &resp).unwrap();
+                                    }
+                                });
                             }
                         }
-                    }
-                    let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
-                    if resolved_ip_list.len() > 0
-                        && (record_type == RecordType::A || record_type == RecordType::AAAA)
-                    {
-                        for record_addr in resolved_ip_list {
-                            match record_addr {
-                                IpAddr::V4(ipv4) => {
-                                    req.add_answer(
-                                        Record::new()
-                                            .set_name(record_name.clone())
-                                            .set_ttl(86400)
-                                            .set_rr_type(RecordType::A)
-                                            .set_dns_class(DNSClass::IN)
-                                            .set_rdata(RData::A(ipv4))
-                                            .clone(),
-                                    );
-                                }
-                                IpAddr::V6(ipv6) => {
-                                    req.add_answer(
-                                        Record::new()
-                                            .set_name(record_name.clone())
-                                            .set_ttl(86400)
-                                            .set_rr_type(RecordType::AAAA)
-                                            .set_dns_class(DNSClass::IN)
-                                            .set_rdata(RData::AAAA(ipv6))
-                                            .clone(),
-                                    );
-                                }
-                            }
-                        }
-                        reply(sender, src_address, &req);
-                    } else {
-                        debug!("Not found, forwarding dns request for {:?}", name);
-                        tokio::spawn(async move {
-                            if let Some(resp) = forward_dns_req(client, req.clone()).await {
-                                reply(sender.clone(), src_address, &resp).unwrap();
-                            }
-                        });
-                    }
-                }
 
-                Err(e) => error!("Error parsing dns message {:?}", e),
+                        Err(e) => error!("Error parsing dns message {:?}", e),
+                    }
+                },
             }
         }
 

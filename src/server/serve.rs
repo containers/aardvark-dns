@@ -166,6 +166,8 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
                 *switch = true;
 
                 // kill servers
+                // TODO: we don't need these two loops anymore. But lets remove when some testing
+                // is done.
                 for (network_name, listen_ip_list) in listen_ip_v4_clone {
                     debug!("Refreshing all servers for network {:?}", network_name);
                     for ip in listen_ip_list {
@@ -182,8 +184,10 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
                 }
             }
 
-            // Don't wait for child threads since interface can be removed before
-            // as  well in some environments. Just rely on kill swtich to kill threads.
+            for handle in thread_handles {
+                let _ = handle.join().unwrap();
+            }
+
             return Ok(());
         }
         Err(e) => {
