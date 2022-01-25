@@ -1,6 +1,6 @@
 [package]
 name = "aardvark-dns"
-version = "0.1.0"
+version = "1.0.0-rc1"
 edition = "2018"
 authors = ["github.com/containers"]
 description = "A container-focused DNS server"
