@@ -25,6 +25,7 @@ pub struct CoreDns {
     cl: AsyncClient,               //server client
     backend: Arc<DNSBackend>,      // server's data store
     kill_switch: Arc<Mutex<bool>>, // global kill_swtich
+    filter_search_domain: String,  // filter_search_domain
 }
 
 impl CoreDns {
@@ -36,6 +37,7 @@ impl CoreDns {
         forward_port: u16,
         backend: Arc<DNSBackend>,
         kill_switch: Arc<Mutex<bool>>,
+        filter_search_domain: String,
     ) -> anyhow::Result<Self> {
         let name: Name = Name::parse(name, None).unwrap();
         let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
@@ -61,6 +63,7 @@ impl CoreDns {
             cl,
             backend,
             kill_switch,
+            filter_search_domain,
         })
     }
 
@@ -160,10 +163,28 @@ impl CoreDns {
                                     match self.backend.name_mappings.get(&self.name.to_ascii()) {
                                         Some(container_mappings) => {
                                             for (key, value) in container_mappings {
+
+                                                // if query contains search domain, strip it out.
+                                                // Why? This is a workaround so aardvark works well
+                                                // with setup which was created for dnsname/dnsmasq
+
+                                                let mut request_name = name.as_str().to_owned();
+                                                let mut filter_domain_ndots_complete = self.filter_search_domain.to_owned();
+                                                filter_domain_ndots_complete.push_str(".");
+
+                                                if request_name.ends_with(&self.filter_search_domain) {
+                                                    request_name = request_name.strip_suffix(&self.filter_search_domain).unwrap().to_string();
+                                                    request_name.push_str(".");
+                                                }
+                                                if request_name.ends_with(&filter_domain_ndots_complete) {
+                                                    request_name = request_name.strip_suffix(&filter_domain_ndots_complete).unwrap().to_string();
+                                                    request_name.push_str(".");
+                                                }
+
                                                 // convert key to fully qualified domain name
                                                 let mut key_fqdn = key.to_owned();
                                                 key_fqdn.push_str(".");
-                                                if key_fqdn == name.as_str() {
+                                                if key_fqdn == request_name {
                                                     resolved_ip_list = value.to_vec();
                                                 }
                                             }

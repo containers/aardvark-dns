@@ -28,7 +28,11 @@ struct DNSBackendWithArc {
     pub backend: Arc<DNSBackend>,
 }
 
-pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
+pub fn serve(
+    config_path: &str,
+    port: u32,
+    filter_search_domain: &str,
+) -> Result<(), std::io::Error> {
     // before serving write its pid to _config_path so other process can notify
     // aardvark of data change.
     let path = Path::new(config_path).join(AARDVARK_PID_FILE);
@@ -58,7 +62,7 @@ pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
     drop(pid_file);
 
     loop {
-        if let Err(er) = core_serve_loop(config_path, port) {
+        if let Err(er) = core_serve_loop(config_path, port, filter_search_domain) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("Server Error {}", er),
@@ -67,7 +71,11 @@ pub fn serve(config_path: &str, port: u32) -> Result<(), std::io::Error> {
     }
 }
 
-fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
+fn core_serve_loop(
+    config_path: &str,
+    port: u32,
+    filter_search_domain: &str,
+) -> Result<(), std::io::Error> {
     let mut signals = Signals::new(&[SIGHUP])?;
 
     match config::parse_configs(config_path) {
@@ -104,6 +112,7 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
             for (network_name, listen_ip_list) in listen_ip_v4 {
                 for ip in listen_ip_list {
                     let network_name_clone = network_name.clone();
+                    let filter_search_domain_clone = filter_search_domain.to_owned();
                     let backend_arc_clone = shareable_arc.clone();
                     let kill_switch_arc_clone = Arc::clone(&kill_switch);
                     let handle = thread::spawn(move || {
@@ -113,6 +122,7 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
                             backend_arc_clone,
                             kill_switch_arc_clone,
                             port,
+                            filter_search_domain_clone.to_string(),
                         ) {
                             error!("Unable to start server {}", _e);
                             return Err(std::io::Error::new(
@@ -131,6 +141,7 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
             for (network_name, listen_ip_list) in listen_ip_v6 {
                 for ip in listen_ip_list {
                     let network_name_clone = network_name.clone();
+                    let filter_search_domain_clone = filter_search_domain.to_owned();
                     let backend_arc_clone = shareable_arc.clone();
                     let kill_switch_arc_clone = Arc::clone(&kill_switch);
                     let handle = thread::spawn(move || {
@@ -140,6 +151,7 @@ fn core_serve_loop(config_path: &str, port: u32) -> Result<(), std::io::Error> {
                             backend_arc_clone,
                             kill_switch_arc_clone,
                             port,
+                            filter_search_domain_clone.to_string(),
                         ) {
                             return Err(std::io::Error::new(
                                 std::io::ErrorKind::Other,
@@ -206,6 +218,7 @@ async fn start_dns_server(
     backend_arc: DNSBackendWithArc,
     kill_switch: Arc<Mutex<bool>>,
     port: u32,
+    filter_search_domain: String,
 ) -> Result<(), std::io::Error> {
     let forward: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
     match CoreDns::new(
@@ -216,6 +229,7 @@ async fn start_dns_server(
         53 as u16,
         backend_arc.backend,
         kill_switch,
+        filter_search_domain,
     )
     .await
     {
