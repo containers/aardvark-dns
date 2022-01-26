@@ -9,7 +9,7 @@ exclude = ["/.cirrus.yml", "/.github/*"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "3.0.12", features = ["derive", "cargo"] }
+clap = { version = "3.0.12", features = ["derive"] }
 env_logger = "0.9.0"
 log = "0.4.14"
 trust-dns-server = "0.20.3"
@@ -19,3 +19,8 @@ anyhow = "1.0.39"
 futures-util = "0.3.19"
 signal-hook = "0.3.13"
 tokio = { version = "1.15.0", features = ["tokio-macros", "full"] }
+
+[build-dependencies]
+# latest version does not compile with rust v1.57
+vergen = { version = "=6.0.0", default-features = false, features = ["build", "rustc", "git"] }
+anyhow = "1.0"
