@@ -1,8 +1,8 @@
-use clap::{crate_version, Clap};
+use clap::{crate_version, Parser, Subcommand};
 
 use aardvark_dns::commands::run;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 #[clap(version = crate_version!())]
 struct Opts {
     /// Path to configuration directory
@@ -19,7 +19,7 @@ struct Opts {
     subcmd: SubCommand,
 }
 
-#[derive(Clap, Debug)]
+#[derive(Subcommand, Debug)]
 enum SubCommand {
     #[clap(version = crate_version!())]
     /// Runs the aardvark dns server with the specified configuration directory.

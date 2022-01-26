@@ -1,10 +1,10 @@
 //! Runs the aardvark dns server with provided config
 use crate::server::serve;
-use clap::{self, Clap};
+use clap::Parser;
 use log::debug;
 use std::io::Error;
 
-#[derive(Clap, Debug)]
+#[derive(Parser, Debug)]
 pub struct Run {}
 
 impl Run {
