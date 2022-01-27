@@ -68,7 +68,7 @@ uninstall:
 	rm -f $(PREFIX)/share/man/man1/aardvark-dns*.1
 
 #.PHONY: test
-#test: unit integration
+test: unit integration
 
 # Used by CI to compile the unit tests but not run them
 .PHONY: build_unit
@@ -76,13 +76,13 @@ build_unit: $(CARGO_TARGET_DIR)
 	cargo test --no-run
 
 #.PHONY: unit
-#unit: $(CARGO_TARGET_DIR)
-#	cargo test
+unit: $(CARGO_TARGET_DIR)
+	cargo test
 
 #.PHONY: integration
-#integration: $(CARGO_TARGET_DIR)
-#	# needs to be run as root or with podman unshare --rootless-netns
-#	bats test/
+integration: $(CARGO_TARGET_DIR)
+	# needs to be run as root or with podman unshare --rootless-netns
+	AARDVARK_NO_PROXY=1 bats test/
 
 .PHONY: validate
 validate: $(CARGO_TARGET_DIR)
