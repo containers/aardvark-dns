@@ -1,7 +1,9 @@
 # aardvark-dns
 
 Authoritative dns server for `A/AAAA` container records. Forwards other request to configured resolvers.
-Read more about configuration in `src/backend/mod.rs`.
+Read more about configuration in `src/backend/mod.rs`. It is mostly intended to be used with
+[Netavark](https://github.com/containers/netavark/) which will launch it automatically if both are
+installed.
 
 ```console
 aardvark-dns 0.1.0
