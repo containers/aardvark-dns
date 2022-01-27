@@ -85,4 +85,32 @@ impl DNSBackend {
 
         DNSResult::Success(results)
     }
+
+    // reverse lookup must return a single name resolved via mapping
+    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &str) -> String {
+        let nets = match self.ip_mappings.get(requester) {
+            Some(n) => n,
+            None => return "".to_string(),
+        };
+
+        for net in nets {
+            let net_names = match self.name_mappings.get(net) {
+                Some(n) => n,
+                None => {
+                    error!("Container with IP {} belongs to network {} but there is no listing in networks table!", requester.to_string(), net);
+                    continue;
+                }
+            };
+
+            for (container_name, ip_list) in net_names {
+                for ip in ip_list {
+                    if ip.to_string() == lookup_ip {
+                        return container_name.to_owned().to_string();
+                    }
+                }
+            }
+        }
+
+        return "".to_string();
+    }
 }

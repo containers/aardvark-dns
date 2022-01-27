@@ -158,6 +158,73 @@ impl CoreDns {
                                 self.kill_switch.lock().unwrap()
                             );
 
+                            // if record type is PTR try resolving early and return if record found
+                            if record_type == RecordType::PTR {
+                                let mut ptr_lookup_ip = name.as_str();
+                                let mut reverse_string: String;
+                                let dot_count = ptr_lookup_ip.matches('.').count();
+                                if dot_count >= 31 {
+                                    // its a ipv6
+                                    // parse ip from dns request
+                                    let mut len = 0;
+                                    let mut dots = 0;
+                                    let mut limit = 0;
+                                    for c in ptr_lookup_ip.chars() {
+                                        if dots == 31 {
+                                            break;
+                                        }
+                                        len += 1;
+                                        if c == '.' {
+                                            dots += 1;
+                                        }
+                                    }
+                                    if ptr_lookup_ip.matches('.').count() == 31 {
+                                        limit = 1;
+                                    }
+                                    ptr_lookup_ip = &ptr_lookup_ip[..len-limit];
+                                } else {
+                                    // its a ipv4
+                                    // parse ip from dns request
+                                    let mut len = 0;
+                                    let mut dots = 0;
+                                    let mut limit = 0;
+                                    for c in ptr_lookup_ip.chars() {
+                                        if dots == 4 {
+                                            break;
+                                        }
+                                        len += 1;
+                                        if c == '.' {
+                                            dots += 1;
+                                        }
+                                    }
+                                    if ptr_lookup_ip.matches('.').count() == 4 {
+                                        limit = 1;
+                                    }
+                                    ptr_lookup_ip = &ptr_lookup_ip[..len-limit];
+                                    let ip_octs: Vec<&str> = ptr_lookup_ip.split('.').collect();
+                                    let reverse_ip: Vec<&str> = ip_octs.into_iter().rev().collect();
+                                    reverse_string = reverse_ip.join(".");
+                                    reverse_string = (&reverse_string[1..reverse_string.len()]).to_string();
+                                    ptr_lookup_ip = &reverse_string;
+                                }
+                                // reverse the ip
+                                trace!("perform lookup reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
+                                let reverse_lookup = self.backend.reverse_lookup(&src_address.ip(), ptr_lookup_ip);
+                                if !reverse_lookup.is_empty() {
+                                            let mut req_clone = req.clone();
+                                            req_clone.add_answer(
+                                                Record::new()
+                                                    .set_ttl(86400)
+                                                    .set_rr_type(RecordType::PTR)
+                                                    .set_dns_class(DNSClass::IN)
+                                                    .set_rdata(RData::PTR(Name::from_ascii(reverse_lookup).unwrap()))
+                                                    .clone(),
+                                            );
+                                            reply(sender.clone(), src_address, &req_clone);
+                                }
+                            }
+
+
                             // attempt intra network resolution
                             match self.backend.lookup(&src_address.ip(), name.as_str()) {
                                 // If we go success from backend lookup
