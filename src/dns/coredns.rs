@@ -1,20 +1,20 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use futures_util::StreamExt;
+use log::{debug, error, trace, warn};
+use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
 use tokio::time::{self, Duration};
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
-    op::{Message, MessageType},
+    op::{Message, MessageType, ResponseCode},
     rr::{DNSClass, RData, Record, RecordType},
     udp::{UdpClientStream, UdpStream},
     xfer::{dns_handle::DnsHandle, DnsRequest},
     BufStreamHandle,
 };
-
-use log::{debug, error, trace, warn};
 use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
@@ -108,6 +108,11 @@ impl CoreDns {
     // registers port supports udp for now
     async fn register_port(&self) -> anyhow::Result<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
+
+        let no_proxy: bool = match env::var("AARDVARK_NO_PROXY") {
+            Ok(_) => true,
+            _ => false,
+        };
 
         // Do we need to serve on tcp anywhere in future ?
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
@@ -227,11 +232,17 @@ impl CoreDns {
                                 reply(sender, src_address, &req);
                             } else {
                                 debug!("Not found, forwarding dns request for {:?}", name);
-                                tokio::spawn(async move {
-                                    if let Some(resp) = forward_dns_req(client, req.clone()).await {
-                                        reply(sender.clone(), src_address, &resp).unwrap();
-                                    }
-                                });
+                                if no_proxy {
+                                    let mut nx_message = req.clone();
+                                    nx_message.set_response_code(ResponseCode::NXDomain);
+                                    reply(sender.clone(), src_address, &nx_message).unwrap();
+                                } else {
+                                    tokio::spawn(async move {
+                                        if let Some(resp) = forward_dns_req(client, req.clone()).await {
+                                            reply(sender.clone(), src_address, &resp).unwrap();
+                                        }
+                                    });
+                                }
                             }
                         }
 
