@@ -1,9 +1,9 @@
-use clap::{crate_version, Clap};
+use clap::{Parser, Subcommand};
 
-use aardvark_dns::commands::run;
+use aardvark_dns::commands::{run, version};
 
-#[derive(Clap, Debug)]
-#[clap(version = crate_version!())]
+#[derive(Parser, Debug)]
+#[clap(version = env!("VERGEN_BUILD_SEMVER"))]
 struct Opts {
     /// Path to configuration directory
     #[clap(short, long)]
@@ -19,11 +19,12 @@ struct Opts {
     subcmd: SubCommand,
 }
 
-#[derive(Clap, Debug)]
+#[derive(Subcommand, Debug)]
 enum SubCommand {
-    #[clap(version = crate_version!())]
     /// Runs the aardvark dns server with the specified configuration directory.
     Run(run::Run),
+    /// Display info about aardvark.
+    Version(version::Version),
 }
 
 fn main() {
@@ -37,6 +38,7 @@ fn main() {
         .unwrap_or_else(|| String::from(".dns.podman"));
     let result = match opts.subcmd {
         SubCommand::Run(run) => run.exec(dir, port, filter_search_domain),
+        SubCommand::Version(version) => version.exec(),
     };
 
     match result {
