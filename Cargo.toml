@@ -18,7 +18,7 @@ trust-dns-client = "0.20.3"
 anyhow = "1.0.39"
 futures-util = "0.3.19"
 signal-hook = "0.3.13"
-tokio = { version = "1.15.0", features = ["tokio-macros", "full"] }
+tokio = { version = "1.16.0", features = ["tokio-macros", "full"] }
 
 [build-dependencies]
 # latest version does not compile with rust v1.57
