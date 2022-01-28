@@ -59,7 +59,7 @@ clean:
 
 .PHONY: install
 install:
-	install ${SELINUXOPT} -D -m0755 bin/aardvark-dns $(DESTDIR)/$(LIBEXECPODMAN)/aardvark-dns
+	install ${SELINUXOPT} -D -m0755 bin/aardvark-dns$(if $(debug),.debug,) $(DESTDIR)/$(LIBEXECPODMAN)/aardvark-dns
 	#$(MAKE) -C docs install
 
 .PHONY: uninstall
