@@ -95,10 +95,21 @@ test_task:
   name: "Test"
   depends_on:
     - "build"  # Run in parallel with validate to save some time
+  env:
+    NETAVARK_BRANCH: "main"
+    NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/github/containers/netavark/success/binary.zip?branch=${NETAVARK_BRANCH}"
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
-  test_script: cargo test
+  setup_script:
+    - curl --fail --location -o /tmp/netavark.zip "$NETAVARK_URL"
+    - mkdir -p /usr/libexec/podman
+    - cd /usr/libexec/podman
+    - unzip /tmp/netavark.zip
+    - chmod a+x /usr/libexec/podman/netavark
+    - dnf -y install bind-utils
+  unit_script: cargo test
+  int_script: make integration
 
 
 # This task is critical.  It updates the "last-used by" timestamp stored
