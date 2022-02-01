@@ -6,14 +6,14 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
-use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
+use trust_dns_client::{proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
     op::{Message, MessageType, ResponseCode},
     rr::{DNSClass, RData, Record, RecordType},
-    udp::{UdpClientStream, UdpStream},
-    xfer::{dns_handle::DnsHandle, DnsRequest},
+    udp::UdpStream,
     BufStreamHandle,
 };
+use trust_dns_resolver::TokioAsyncResolver;
 use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
@@ -21,7 +21,6 @@ pub struct CoreDns {
     address: IpAddr,                     // server address
     port: u32,                           // server port
     authority: InMemoryAuthority,        // server authority
-    cl: AsyncClient,                     //server client
     backend: Arc<DNSBackend>,            // server's data store
     kill_switch: Arc<Mutex<bool>>,       // global kill_switch
     filter_search_domain: String,        // filter_search_domain
@@ -48,20 +47,11 @@ impl CoreDns {
             forward_addr, forward_port,
         );
 
-        let connection = UdpClientStream::<UdpSocket>::new(SocketAddr::new(
-            IpAddr::from(forward_addr),
-            forward_port,
-        ));
-
-        let (cl, req_sender) = AsyncClient::connect(connection).await?;
-        let _ = tokio::spawn(req_sender);
-
         Ok(CoreDns {
             name,
             address,
             port,
             authority,
-            cl,
             backend,
             kill_switch,
             filter_search_domain,
@@ -128,7 +118,6 @@ impl CoreDns {
                 v = receiver.next() => {
                     match v.unwrap() {
                         Ok(msg) => {
-                            let client = self.cl.clone();
                             let src_address = msg.addr().clone();
                             let sender = sender.clone();
                             let (name, record_type, mut req) = parse_dns_msg(msg).unwrap();
@@ -234,8 +223,39 @@ impl CoreDns {
                                     reply(sender.clone(), src_address, &nx_message).unwrap();
                                 } else {
                                     tokio::spawn(async move {
-                                        if let Some(resp) = forward_dns_req(client, req.clone()).await {
-                                            reply(sender.clone(), src_address, &resp).unwrap();
+
+                                        // forward dns request to hosts's /etc/resolv.conf
+                                        if let Ok(resolver) = TokioAsyncResolver::tokio_from_system_conf() {
+                                            if let Ok(lookup_ip) = resolver.lookup_ip(name.as_str()).await {
+                                            let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
+                                                for response_ip in lookup_ip {
+                                                        match response_ip {
+                                                            IpAddr::V4(ipv4) => {
+                                                                req.add_answer(
+                                                                     Record::new()
+                                                                        .set_name(record_name.clone())
+                                                                        .set_ttl(86400)
+                                                                        .set_rr_type(RecordType::A)
+                                                                        .set_dns_class(DNSClass::IN)
+                                                                        .set_rdata(RData::A(ipv4))
+                                                                        .clone(),
+                                                                );
+                                                            },
+                                                            IpAddr::V6(ipv6) => {
+                                                                req.add_answer(
+                                                                     Record::new()
+                                                                        .set_name(record_name.clone())
+                                                                        .set_ttl(86400)
+                                                                        .set_rr_type(RecordType::AAAA)
+                                                                        .set_dns_class(DNSClass::IN)
+                                                                        .set_rdata(RData::AAAA(ipv6))
+                                                                        .clone(),
+                                                                );
+                                                            }
+                                                        }
+                                                }
+                                                reply(sender.clone(), src_address, &req);
+                                            }
                                         }
                                     });
                                 }
@@ -302,32 +322,6 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
         }
         Err(e) => {
             warn!("Failed while parsing message: {}", e);
-            None
-        }
-    }
-}
-
-async fn forward_dns_req(mut cl: AsyncClient, message: Message) -> Option<Message> {
-    let req = DnsRequest::new(message, Default::default());
-    let id = req.id();
-
-    match cl.send(req).await {
-        Ok(mut response) => {
-            response.set_id(id);
-            for answer in response.answers() {
-                debug!(
-                    "{} {} {} {} => {}",
-                    id,
-                    answer.name().to_string(),
-                    answer.record_type(),
-                    answer.dns_class(),
-                    answer.rdata(),
-                );
-            }
-            Some(response.into())
-        }
-        Err(e) => {
-            error!("{} dns request failed: {}", id, e);
             None
         }
     }
