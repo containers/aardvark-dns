@@ -9,7 +9,7 @@ exclude = ["/.cirrus.yml", "/.github/*"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "3.0.12", features = ["derive"] }
+clap = { version = "3.0.13", features = ["derive"] }
 env_logger = "0.9.0"
 log = "0.4.14"
 trust-dns-server = "0.20.3"
