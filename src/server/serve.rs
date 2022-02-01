@@ -11,6 +11,7 @@ use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use async_broadcast::broadcast;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
@@ -109,12 +110,16 @@ fn core_serve_loop(
             debug!("Listen v4 ip {:?}", listen_ip_v4);
             debug!("Listen v6 ip {:?}", listen_ip_v6);
 
+            // create a receiver and sender for async broadcast channel
+            let (tx, rx) = broadcast(1000);
+
             for (network_name, listen_ip_list) in listen_ip_v4 {
                 for ip in listen_ip_list {
                     let network_name_clone = network_name.clone();
                     let filter_search_domain_clone = filter_search_domain.to_owned();
                     let backend_arc_clone = shareable_arc.clone();
                     let kill_switch_arc_clone = Arc::clone(&kill_switch);
+                    let receiver = rx.clone();
                     let handle = thread::spawn(move || {
                         if let Err(_e) = start_dns_server(
                             &network_name_clone,
@@ -123,6 +128,7 @@ fn core_serve_loop(
                             kill_switch_arc_clone,
                             port,
                             filter_search_domain_clone.to_string(),
+                            receiver,
                         ) {
                             error!("Unable to start server {}", _e);
                             return Err(std::io::Error::new(
@@ -144,6 +150,7 @@ fn core_serve_loop(
                     let filter_search_domain_clone = filter_search_domain.to_owned();
                     let backend_arc_clone = shareable_arc.clone();
                     let kill_switch_arc_clone = Arc::clone(&kill_switch);
+                    let receiver = rx.clone();
                     let handle = thread::spawn(move || {
                         if let Err(_e) = start_dns_server(
                             &network_name_clone,
@@ -152,6 +159,7 @@ fn core_serve_loop(
                             kill_switch_arc_clone,
                             port,
                             filter_search_domain_clone.to_string(),
+                            receiver,
                         ) {
                             return Err(std::io::Error::new(
                                 std::io::ErrorKind::Other,
@@ -174,6 +182,7 @@ fn core_serve_loop(
             });
 
             if let Ok(_) = handle_signal.join() {
+                send_broadcast(&tx);
                 let mut switch = kill_switch.lock().unwrap();
                 *switch = true;
 
@@ -200,6 +209,10 @@ fn core_serve_loop(
                 let _ = handle.join().unwrap();
             }
 
+            // close and drop broadcast channel
+            tx.close();
+            drop(tx);
+
             return Ok(());
         }
         Err(e) => {
@@ -219,6 +232,7 @@ async fn start_dns_server(
     kill_switch: Arc<Mutex<bool>>,
     port: u32,
     filter_search_domain: String,
+    rx: async_broadcast::Receiver<bool>,
 ) -> Result<(), std::io::Error> {
     let forward: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
     match CoreDns::new(
@@ -230,6 +244,7 @@ async fn start_dns_server(
         backend_arc.backend,
         kill_switch,
         filter_search_domain,
+        rx,
     )
     .await
     {
@@ -249,6 +264,11 @@ async fn start_dns_server(
             ))
         }
     }
+}
+
+#[tokio::main]
+async fn send_broadcast(tx: &async_broadcast::Sender<bool>) {
+    tx.broadcast(true).await.unwrap();
 }
 
 fn server_refresh_request(address_string: String) {
