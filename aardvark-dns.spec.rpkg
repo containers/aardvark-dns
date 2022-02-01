@@ -27,7 +27,7 @@ Release:    1%{?dist}
 Summary: Authoritative DNS server for A/AAAA container records
 
 # License. We assume GPLv2+ here.
-License:   ASL 2.0
+License:   ASL 2.0 and BSD and ISC and MIT
 
 # Home page of the project. Can also point to the public Git repository page.
 URL:        https://github.com/containers/aardvark-dns
@@ -40,8 +40,9 @@ VCS:        {{{ git_dir_vcs }}}
 # and returns its filename. The tarball will be used to build the rpm.
 Source:     {{{ git_dir_pack }}}
 
-BuildRequires: make
 BuildRequires: cargo
+BuildRequires: git-core
+BuildRequires: make
 
 ExclusiveArch:  %{rust_arches}
 %if %{__cargo_skip_build}
@@ -56,8 +57,8 @@ BuildArch:      noarch
 # The following four sections already describe the rpm build process itself.
 # prep will extract the tarball defined as Source above and descend into it.
 %prep
-{{{ git_dir_setup_macro }}}
-sed -i 's/install: docs build/install:/' Makefile
+#{{{ git_dir_setup_macro }}}
+%autosetup -Sgit -T -b 0 -n %{name}
 
 # This will invoke `make` command in the directory with the extracted sources.
 %build

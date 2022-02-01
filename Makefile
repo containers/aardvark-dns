@@ -84,6 +84,10 @@ integration: $(CARGO_TARGET_DIR)
 	# needs to be run as root or with podman unshare --rootless-netns
 	AARDVARK_NO_PROXY=1 bats test/
 
+.PHONY: mock-rpm
+mock-rpm:
+	rpkg local
+
 .PHONY: validate
 validate: $(CARGO_TARGET_DIR)
 	cargo fmt --all -- --check
@@ -99,6 +103,7 @@ vendor-rm-windows:
 	if [ -d "vendor/winapi" ]; then \
 		rm -fr vendor/winapi*gnu*/lib/*.a; \
 	fi
+
 
 .PHONY: help
 help:
