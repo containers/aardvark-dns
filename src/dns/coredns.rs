@@ -6,7 +6,6 @@ use std::env;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
-use tokio::time::{self, Duration};
 use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
     op::{Message, MessageType, ResponseCode},
@@ -18,14 +17,15 @@ use trust_dns_proto::{
 use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
-    name: Name,                    // name or origin
-    address: IpAddr,               // server address
-    port: u32,                     // server port
-    authority: InMemoryAuthority,  // server authority
-    cl: AsyncClient,               //server client
-    backend: Arc<DNSBackend>,      // server's data store
-    kill_switch: Arc<Mutex<bool>>, // global kill_swtich
-    filter_search_domain: String,  // filter_search_domain
+    name: Name,                          // name or origin
+    address: IpAddr,                     // server address
+    port: u32,                           // server port
+    authority: InMemoryAuthority,        // server authority
+    cl: AsyncClient,                     //server client
+    backend: Arc<DNSBackend>,            // server's data store
+    kill_switch: Arc<Mutex<bool>>,       // global kill_switch
+    filter_search_domain: String,        // filter_search_domain
+    rx: async_broadcast::Receiver<bool>, // kill switch receiver
 }
 
 impl CoreDns {
@@ -38,6 +38,7 @@ impl CoreDns {
         backend: Arc<DNSBackend>,
         kill_switch: Arc<Mutex<bool>>,
         filter_search_domain: String,
+        rx: async_broadcast::Receiver<bool>,
     ) -> anyhow::Result<Self> {
         let name: Name = Name::parse(name, None).unwrap();
         let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
@@ -64,6 +65,7 @@ impl CoreDns {
             backend,
             kill_switch,
             filter_search_domain,
+            rx,
         })
     }
 
@@ -106,7 +108,7 @@ impl CoreDns {
     }
 
     // registers port supports udp for now
-    async fn register_port(&self) -> anyhow::Result<()> {
+    async fn register_port(&mut self) -> anyhow::Result<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
 
         let no_proxy: bool = match env::var("AARDVARK_NO_PROXY") {
@@ -118,16 +120,10 @@ impl CoreDns {
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
         let (mut receiver, sender) = UdpStream::with_bound(socket);
 
-        // following delay is async and is responsible for invkoing kill_switch
-        let non_blocking_delay = time::sleep(Duration::from_millis(50));
-        tokio::pin!(non_blocking_delay);
-
         loop {
             tokio::select! {
-                _ = &mut non_blocking_delay => {
-                    if *self.kill_switch.lock().unwrap() {
-                        break;
-                    }
+                _ = self.rx.recv() => {
+                    break;
                 },
                 v = receiver.next() => {
                     match v.unwrap() {
