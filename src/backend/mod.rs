@@ -15,6 +15,8 @@ pub struct DNSBackend {
     pub ip_mappings: HashMap<IpAddr, Vec<String>>,
     // Map of network name to map of name to IP addresses.
     pub name_mappings: HashMap<String, HashMap<String, Vec<IpAddr>>>,
+    // Map of network name to map of IP address to container name.
+    pub reverse_mappings: HashMap<String, HashMap<IpAddr, Vec<String>>>,
     // Map of IP address to DNS server IPs to service queries not handled
     // directly.
     // Not implemented in initial version, we will always use host resolvers.
@@ -41,10 +43,12 @@ impl DNSBackend {
     pub fn new(
         containers: &HashMap<IpAddr, Vec<String>>,
         networks: &HashMap<String, HashMap<String, Vec<IpAddr>>>,
+        reverse: &HashMap<String, HashMap<IpAddr, Vec<String>>>,
     ) -> DNSBackend {
         DNSBackend {
             ip_mappings: containers.clone(),
             name_mappings: networks.clone(),
+            reverse_mappings: reverse.clone(),
         }
     }
 
@@ -87,30 +91,20 @@ impl DNSBackend {
     }
 
     // reverse lookup must return a single name resolved via mapping
-    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &str) -> String {
+    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<Vec<&str>> {
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
-            None => return "".to_string(),
+            None => return None,
         };
 
         for net in nets {
-            let net_names = match self.name_mappings.get(net) {
-                Some(n) => n,
-                None => {
-                    error!("Container with IP {} belongs to network {} but there is no listing in networks table!", requester.to_string(), net);
-                    continue;
-                }
-            };
-
-            for (container_name, ip_list) in net_names {
-                for ip in ip_list {
-                    if ip.to_string() == lookup_ip {
-                        return container_name.to_owned().to_string();
-                    }
+            if let Some(ips) = self.reverse_mappings.get(net) {
+                if let Some(names) = ips.get(lookup_ip) {
+                    return Some(names.iter().map(|s| s.as_str()).collect());
                 }
             }
         }
 
-        return "".to_string();
+        None
     }
 }

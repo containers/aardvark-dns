@@ -34,6 +34,7 @@ pub fn parse_configs(
 
     let mut network_membership: HashMap<String, Vec<String>> = HashMap::new();
     let mut container_ips: HashMap<String, Vec<IpAddr>> = HashMap::new();
+    let mut reverse: HashMap<String, HashMap<IpAddr, Vec<String>>> = HashMap::new();
     let mut network_names: HashMap<String, HashMap<String, Vec<IpAddr>>> = HashMap::new();
     let mut listen_ips_4: HashMap<String, Vec<Ipv4Addr>> = HashMap::new();
     let mut listen_ips_6: HashMap<String, Vec<Ipv6Addr>> = HashMap::new();
@@ -97,15 +98,23 @@ pub fn parse_configs(
 
                     // Container IP addresses
                     let mut new_ctr_ips: Vec<IpAddr> = Vec::new();
-                    if !entry.v4.is_none() {
-                        // unwrap is safe here since we already did a none check
-                        // and value is already parsed
-                        new_ctr_ips.push(IpAddr::V4(entry.v4.unwrap()));
+                    if let Some(v4) = entry.v4 {
+                        reverse
+                            .entry(network_name.clone())
+                            .or_insert(HashMap::new())
+                            .entry(std::net::IpAddr::V4(v4))
+                            .or_insert(Vec::new())
+                            .append(&mut entry.aliases.clone());
+                        new_ctr_ips.push(IpAddr::V4(v4));
                     }
-                    if !entry.v6.is_none() {
-                        // unwrap is safe here since we already did a none check
-                        // and value is already parsed
-                        new_ctr_ips.push(IpAddr::V6(entry.v6.unwrap()));
+                    if let Some(v6) = entry.v6 {
+                        reverse
+                            .entry(network_name.clone())
+                            .or_insert(HashMap::new())
+                            .entry(std::net::IpAddr::V6(v6))
+                            .or_insert(Vec::new())
+                            .append(&mut entry.aliases.clone());
+                        new_ctr_ips.push(IpAddr::V6(v6));
                     }
 
                     let ctr_ips = container_ips.entry(entry.id.clone()).or_insert(Vec::new());
@@ -149,7 +158,7 @@ pub fn parse_configs(
     }
 
     Ok((
-        DNSBackend::new(&ctrs, &network_names),
+        DNSBackend::new(&ctrs, &network_names, &reverse),
         listen_ips_4,
         listen_ips_6,
     ))
