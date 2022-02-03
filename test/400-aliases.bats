@@ -7,7 +7,6 @@ load helpers
 
 @test "two containers on the same network with aliases" {
 	# container a1
-	basic_host_setup
 	subnet_a=$(random_subnet 5)
 	create_config "podman1" $(random_string 64) "aone" "$subnet_a" "a1" "1a"
 	config_a1="$config"
@@ -22,7 +21,6 @@ load helpers
 	a2_ip=$(echo "$config_a2" | jq -r .networks.podman1.static_ips[0])
 	create_container "$config_a2"
 	a2_pid="$CONTAINER_NS_PID"
-
 
 	dig "$a1_pid" "a2" "$gw"
 	assert "$a2_ip"
