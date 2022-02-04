@@ -25,12 +25,21 @@ load helpers
 	create_container "$b1_config"
 	b1_pid="$CONTAINER_NS_PID"
 
-	# container a1 should not resolve b1
+	# container a1 should not resolve b1 and we should get
+	# a NXDOMAIN
 	dig "$a1_pid" "bone" "$a_gw"
 	assert ""
-	# container b1 should not resolve a1
+	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$a_gw"
+	assert "$output" =~ "Host bone not found"
+	assert "$output" =~ "NXDOMAIN"
+
+	# container b1 should not resolve a1 and we should get
+	# a NXDOMAIN
 	dig "$b1_pid" "aone" "$b_gw"
 	assert ""
+	expected_rc=1 run_in_container_netns "$b1_pid" "host" "-t" "ns" "aone" "$b_gw"
+	assert "$output" =~ "Host aone not found"
+	assert "$output" =~ "NXDOMAIN"
 
 	# a1 should be able to resolve itself
 	dig "$a1_pid" "aone" "$a_gw"
