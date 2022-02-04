@@ -76,7 +76,7 @@ load helpers
 	assert "$output" =~  "$b2_ip"
 }
 
-@test "three subnets, one container or two of the subnets, network connect" {
+@test "three subnets, one container on two of the subnets, network connect" {
 	# Create all three subnets
 	subnet_a=$(random_subnet 5)
 	subnet_b=$(random_subnet 5)
@@ -143,12 +143,6 @@ load helpers
 	c1b2_config=$(jq -r ".networks += $b2_network" <<<"$c1_config")
 	c1b2_config=$(jq -r ".network_info += $b2_network_info" <<<"$c1b2_config")
 
-	echo "$c1_id"
-	echo "$b2_config" | jq
-	echo "--------------"
-	echo "$a1b1_config" | jq
-	echo "$c1b2_config" | jq
-	echo "--------------"
 	# Create the containers but do not add to NS_PIDS or CONTAINER_CONFIGS	
 	connect "$a1_pid" "$b1_config"
 	connect "$c1_pid" "$b2_config"
