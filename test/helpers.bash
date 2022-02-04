@@ -439,15 +439,15 @@ function create_container() {
 	CONTAINER_NS_PID=$(create_netns)
 	CONTAINER_NS_PIDS+=("$CONTAINER_NS_PID")
     create_container_backend "$CONTAINER_NS_PID" "$1"
+	CONTAINER_CONFIGS+=("$1")
 }
 
 # arg1 is pid
 # arg2 is config
 function create_container_backend() {
-	run_netavark  setup $(get_container_netns_path $1) <<<"$2"
-	CONTAINER_CONFIGS+=("$2")
-
+	run_netavark setup $(get_container_netns_path $1) <<<"$2"
 }
+
 ################
 #  connect#  Connects netns to another network
 ################
@@ -512,4 +512,8 @@ function dig_reverse() {
 # third arg is server addr
     #run_in_container_netns "$1" "dig" "-x" "$2" "+short" "@$3"
     run_in_container_netns "$1" "nslookup" "$2" "$3"
+}
+
+function setup() {
+    basic_host_setup
 }
