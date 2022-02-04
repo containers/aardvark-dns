@@ -2,6 +2,7 @@
 
 # Netavark binary to run
 NETAVARK=${NETAVARK:-/usr/libexec/podman/netavark}
+AARDVARK=${AARDVARK:-./bin/aardvark-dns}
 
 TESTSDIR=${TESTSDIR:-$(dirname ${BASH_SOURCE})}
 
@@ -306,7 +307,7 @@ function get_container_netns_path() {
 # it joins the test network namespace before it invokes $NETAVARK,
 # which may be 'netavark' or '/some/path/netavark'.
 function run_netavark() {
-    run_in_host_netns $NETAVARK "-a" "$PWD/bin/aardvark-dns" "$@"
+    run_in_host_netns $NETAVARK "--config" "$AARDVARK_TMPDIR" "-a" "$AARDVARK" "$@"
 }
 
 ################
@@ -355,7 +356,7 @@ function create_config() {
 
     create_network "$network_name" "$container_ip" "eth0" "$aliases"
     create_network_infos "$network_name" $(random_string 64) "$subnets"
-    
+
     read -r -d '\0' config <<EOF
 {
   "container_id": "$container_id",
@@ -467,11 +468,11 @@ function basic_host_setup() {
 	# thus the firewall rules end up in the wrong netns
 	# unsetting does not work, it would use the default address
 	export DBUS_SYSTEM_BUS_ADDRESS=
-	NETAVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} netavark_bats.XXXXXX)
+	AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
 }
 
 function basic_teardown() {
-	rm -fr "$NETAVARK_TMPDIR"
+	rm -fr "$AARDVARK_TMPDIR"
 }
 
 
@@ -484,7 +485,7 @@ function netavark_teardown() {
 }
 
 function teardown() {
-	#basic_teardown
+	basic_teardown
 
     # Now call netavark with all the configs and then kill the netns associated with it
     for i in "${!CONTAINER_CONFIGS[@]}"; do
