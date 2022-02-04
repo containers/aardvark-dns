@@ -237,7 +237,9 @@ impl CoreDns {
                                 reply(sender, src_address, &req);
                             } else {
                                 debug!("Not found, forwarding dns request for {:?}", name);
-                                if no_proxy {
+                                let request_name = name.as_str().to_owned();
+                                let filter_search_domain_ndots = self.filter_search_domain.clone() + ".";
+                                if no_proxy || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message).unwrap();
