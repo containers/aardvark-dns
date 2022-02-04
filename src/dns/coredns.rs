@@ -2,18 +2,21 @@ use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use log::{debug, error, trace, warn};
+use resolv_conf;
 use std::env;
+use std::fs::File;
+use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
-use trust_dns_client::{proto::xfer::SerialMessage, rr::Name};
+use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
 use trust_dns_proto::{
     op::{Message, MessageType, ResponseCode},
     rr::{DNSClass, RData, Record, RecordType},
-    udp::UdpStream,
+    udp::{UdpClientStream, UdpStream},
+    xfer::{dns_handle::DnsHandle, DnsRequest},
     BufStreamHandle,
 };
-use trust_dns_resolver::TokioAsyncResolver;
 use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
@@ -25,6 +28,7 @@ pub struct CoreDns {
     kill_switch: Arc<Mutex<bool>>,       // global kill_switch
     filter_search_domain: String,        // filter_search_domain
     rx: async_broadcast::Receiver<bool>, // kill switch receiver
+    resolv_conf: resolv_conf::Config,    // host's parsed /etc/resolv.conf
 }
 
 impl CoreDns {
@@ -47,6 +51,21 @@ impl CoreDns {
             forward_addr, forward_port,
         );
 
+        let mut resolv_conf: resolv_conf::Config = resolv_conf::Config::new();
+        let mut buf = Vec::with_capacity(4096);
+        if let Ok(mut f) = File::open("/etc/resolv.conf") {
+            match f.read_to_end(&mut buf) {
+                Ok(_) => {
+                    if let Ok(conf) = resolv_conf::Config::parse(&buf) {
+                        resolv_conf = conf;
+                    }
+                }
+                // not able to read user's /etc/resolv.conf. It's user's setup fault
+                // all the external requests will not be forwarded
+                _ => {}
+            }
+        }
+
         Ok(CoreDns {
             name,
             address,
@@ -56,6 +75,7 @@ impl CoreDns {
             kill_switch,
             filter_search_domain,
             rx,
+            resolv_conf,
         })
     }
 
@@ -222,39 +242,24 @@ impl CoreDns {
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message).unwrap();
                                 } else {
+                                    let nameservers = self.resolv_conf.nameservers.clone();
                                     tokio::spawn(async move {
-
                                         // forward dns request to hosts's /etc/resolv.conf
-                                        if let Ok(resolver) = TokioAsyncResolver::tokio_from_system_conf() {
-                                            if let Ok(lookup_ip) = resolver.lookup_ip(name.as_str()).await {
-                                            let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
-                                                for response_ip in lookup_ip {
-                                                        match response_ip {
-                                                            IpAddr::V4(ipv4) => {
-                                                                req.add_answer(
-                                                                     Record::new()
-                                                                        .set_name(record_name.clone())
-                                                                        .set_ttl(86400)
-                                                                        .set_rr_type(RecordType::A)
-                                                                        .set_dns_class(DNSClass::IN)
-                                                                        .set_rdata(RData::A(ipv4))
-                                                                        .clone(),
-                                                                );
-                                                            },
-                                                            IpAddr::V6(ipv6) => {
-                                                                req.add_answer(
-                                                                     Record::new()
-                                                                        .set_name(record_name.clone())
-                                                                        .set_ttl(86400)
-                                                                        .set_rr_type(RecordType::AAAA)
-                                                                        .set_dns_class(DNSClass::IN)
-                                                                        .set_rdata(RData::AAAA(ipv6))
-                                                                        .clone(),
-                                                                );
-                                                            }
-                                                        }
+                                        for nameserver in nameservers {
+                                            let connection = UdpClientStream::<UdpSocket>::new(SocketAddr::new(
+                                                nameserver.into(),
+                                                53,
+                                            ));
+
+                                            if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
+                                                let _ = tokio::spawn(req_sender);
+                                                if let Some(resp) = forward_dns_req(cl, req.clone()).await {
+                                                    if let Some(_) = reply(sender.clone(), src_address, &resp) {
+                                                        // request resolved from following resolver so
+                                                        // break and don't try other resolvers
+                                                        break;
+                                                    }
                                                 }
-                                                reply(sender.clone(), src_address, &req);
                                             }
                                         }
                                     });
@@ -322,6 +327,32 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
         }
         Err(e) => {
             warn!("Failed while parsing message: {}", e);
+            None
+        }
+    }
+}
+
+async fn forward_dns_req(mut cl: AsyncClient, message: Message) -> Option<Message> {
+    let req = DnsRequest::new(message, Default::default());
+    let id = req.id();
+
+    match cl.send(req).await {
+        Ok(mut response) => {
+            response.set_id(id);
+            for answer in response.answers() {
+                debug!(
+                    "{} {} {} {} => {}",
+                    id,
+                    answer.name().to_string(),
+                    answer.record_type(),
+                    answer.dns_class(),
+                    answer.rdata(),
+                );
+            }
+            Some(response.into())
+        }
+        Err(e) => {
+            error!("{} dns request failed: {}", id, e);
             None
         }
     }
