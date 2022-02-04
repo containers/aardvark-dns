@@ -2,9 +2,10 @@
 
 # Netavark binary to run
 NETAVARK=${NETAVARK:-/usr/libexec/podman/netavark}
-AARDVARK=${AARDVARK:-./bin/aardvark-dns}
 
 TESTSDIR=${TESTSDIR:-$(dirname ${BASH_SOURCE})}
+
+AARDVARK=${AARDVARK:-$TESTSDIR/../bin/aardvark-dns}
 
 # export RUST_BACKTRACE so that we get a helpful stack trace
 export RUST_BACKTRACE=full
@@ -291,7 +292,7 @@ function gateway_from_subnet() {
 function create_netns() {
     # create a new netns and mountns and run a sleep process to keep it alive
     # we have to redirect stdout/err to /dev/null otherwise bats will hang
-    unshare -n sleep inf &>/dev/null &
+    unshare -mn sleep inf &>/dev/null &
     echo $!
 }
 
@@ -325,7 +326,7 @@ function run_in_container_netns() {
 ################
 #
 function run_in_host_netns() {
-    run_helper nsenter -n -t $HOST_NS_PID "$@"
+    run_helper nsenter -m -n -t $HOST_NS_PID "$@"
 }
 
 ################
@@ -469,6 +470,19 @@ function basic_host_setup() {
 	# unsetting does not work, it would use the default address
 	export DBUS_SYSTEM_BUS_ADDRESS=
 	AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
+
+    command -v slirp4netns || die "slirp4netns not installed"
+
+    slirp4netns -c $HOST_NS_PID tap0 &>/dev/null &
+    SLIRP4NETNS_PID=$!
+
+    # wait for slirp4netns, we could use --ready-fd but
+    # I cannot make this work because bach keeps the pipe open so we cannot wait for EOF
+    sleep 0.5
+
+    # create new resolv.conf with slirp4netns dns
+    echo "nameserver 10.0.2.3" > "$AARDVARK_TMPDIR/resolv.conf"
+    run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
 }
 
 function basic_teardown() {
@@ -485,13 +499,13 @@ function netavark_teardown() {
 }
 
 function teardown() {
-	basic_teardown
-
     # Now call netavark with all the configs and then kill the netns associated with it
     for i in "${!CONTAINER_CONFIGS[@]}"; do
         netavark_teardown $(get_container_netns_path "${CONTAINER_NS_PIDS[$i]}") "${CONTAINER_CONFIGS[$i]}"
         kill -9 "${CONTAINER_NS_PIDS[$i]}"
     done
+
+    kill -9 $SLIRP4NETNS_PID
 
     # Finally kill the host netns
     if [ ! -z "$HOST_NS_PID" ]; then
@@ -499,6 +513,7 @@ function teardown() {
         kill -9 "$HOST_NS_PID"
     fi
 
+    basic_teardown
 }
 
 function dig() {

@@ -15,6 +15,10 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
 	assert "$ip_a1"
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
+	# validate that we get an ipv4
+	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
 }
 
 @test "basic container - dns itself with long network name" {
@@ -46,7 +50,7 @@ load helpers
 	a2_ip=$(echo "$config_a2" | jq -r .networks.podman1.static_ips[0])
 	create_container "$config_a2"
 	a2_pid="$CONTAINER_NS_PID"
-	
+
 	# Resolve container names to IPs
 	dig "$a1_pid" "atwo" "$gw"
 	assert "$a2_ip"
