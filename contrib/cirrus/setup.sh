@@ -19,9 +19,6 @@ msg "Setting up runtime environment"
 msg "************************************************************"
 show_env_vars
 
-# TODO: Remove this when images updated w/ this package
-dnf -y install bind-utils
-
 req_env_vars NETAVARK_URL
 
 set -x  # show what's happening
