@@ -97,11 +97,9 @@ impl DNSBackend {
             None => return None,
         };
 
-        for net in nets {
-            if let Some(ips) = self.reverse_mappings.get(net) {
-                if let Some(names) = ips.get(lookup_ip) {
-                    return Some(names);
-                }
+        for ips in nets.iter().filter_map(|v| self.reverse_mappings.get(v)) {
+            if let Some(names) = ips.get(lookup_ip) {
+                return Some(names);
             }
         }
 
