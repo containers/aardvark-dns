@@ -91,7 +91,7 @@ impl DNSBackend {
     }
 
     // reverse lookup must return a single name resolved via mapping
-    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<Vec<&str>> {
+    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<&Vec<String>> {
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
             None => return None,
@@ -100,7 +100,7 @@ impl DNSBackend {
         for net in nets {
             if let Some(ips) = self.reverse_mappings.get(net) {
                 if let Some(names) = ips.get(lookup_ip) {
-                    return Some(names.iter().map(|s| s.as_str()).collect());
+                    return Some(names);
                 }
             }
         }
