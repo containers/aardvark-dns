@@ -277,7 +277,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             id: parts[0].to_string(),
             v4: v4_addr,
             v6: v6_addr,
-            aliases: aliases,
+            aliases,
         });
     }
 
