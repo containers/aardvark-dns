@@ -90,18 +90,16 @@ impl DNSBackend {
         DNSResult::Success(results)
     }
 
-    // reverse lookup must return a single name resolved via mapping
-    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<Vec<&str>> {
+    /// Return a single name resolved via mapping if it exists.
+    pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<&Vec<String>> {
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
             None => return None,
         };
 
-        for net in nets {
-            if let Some(ips) = self.reverse_mappings.get(net) {
-                if let Some(names) = ips.get(lookup_ip) {
-                    return Some(names.iter().map(|s| s.as_str()).collect());
-                }
+        for ips in nets.iter().filter_map(|v| self.reverse_mappings.get(v)) {
+            if let Some(names) = ips.get(lookup_ip) {
+                return Some(names);
             }
         }
 
