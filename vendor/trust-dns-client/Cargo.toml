@@ -3,17 +3,16 @@
 # When uploading crates to the registry Cargo will automatically
 # "normalize" Cargo.toml files for maximal compatibility
 # with all versions of Cargo and also rewrite `path` dependencies
-# to registry (e.g., crates.io) dependencies
+# to registry (e.g., crates.io) dependencies.
 #
-# If you believe there's an error in this file please file an
-# issue against the rust-lang/cargo repository. If you're
-# editing this file be aware that the upstream Cargo.toml
-# will likely look very different (and much more reasonable)
+# If you are reading this file be aware that the original Cargo.toml
+# will likely look very different (and much more reasonable).
+# See Cargo.toml.orig for the original contents.
 
 [package]
 edition = "2018"
 name = "trust-dns-client"
-version = "0.20.3"
+version = "0.20.4"
 authors = ["Benjamin Fry <benjaminfry@me.com>"]
 description = "Trust-DNS is a safe and secure DNS library. This is the Client library with DNSec support.\n DNSSec with NSEC validation for negative records, is complete. The client supports\n dynamic DNS with SIG0 authenticated requests, implementing easy to use high level\n funtions. Trust-DNS is based on the Tokio and Futures libraries, which means\n it should be easily integrated into other software that also use those\n libraries.\n"
 homepage = "http://www.trust-dns.org/index.html"
@@ -29,9 +28,6 @@ name = "trust_dns_client"
 path = "src/lib.rs"
 [dependencies.cfg-if]
 version = "1"
-
-[dependencies.chrono]
-version = "0.4"
 
 [dependencies.data-encoding]
 version = "2.2.0"
@@ -80,16 +76,19 @@ optional = true
 [dependencies.thiserror]
 version = "1.0.20"
 
+[dependencies.time]
+version = "0.3"
+
 [dependencies.tokio]
 version = "1.0"
 features = ["rt"]
 
 [dependencies.trust-dns-https]
-version = "0.20.3"
+version = "0.20.4"
 optional = true
 
 [dependencies.trust-dns-proto]
-version = "0.20.3"
+version = "0.20.4"
 features = ["dnssec"]
 
 [dependencies.webpki]
