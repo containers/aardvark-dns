@@ -75,7 +75,7 @@ impl DNSBackend {
                 }
             };
             // if this is a fully qualified name, remove dots so backend can perform search
-            if name.len() > 0 {
+            if !name.is_empty() {
                 if let Some(lastchar) = name.chars().last() {
                     if lastchar == '.' {
                         name = &name[0..name.len() - 1];
@@ -87,7 +87,7 @@ impl DNSBackend {
             }
         }
 
-        if results.len() == 0 {
+        if results.is_empty() {
             return DNSResult::NXDomain;
         }
 

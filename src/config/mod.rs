@@ -15,6 +15,10 @@ pub mod constants;
 // <container ID, space, IPv4 address, space, IPv6 address, space, comma-separated list of name and aliases>
 // Where space is a single space character.
 // Returns a complete DNSBackend struct (all that is necessary for looks) and
+
+// Silent clippy: sometimes clippy marks useful tyes as complex and for this case following type is
+// convinient
+#[allow(clippy::type_complexity)]
 pub fn parse_configs(
     dir: &str,
 ) -> Result<
@@ -58,7 +62,7 @@ pub fn parse_configs(
                         continue;
                     }
                 }
-                let (bind_ips, ctr_entry) = parse_config(&(cfg.path().as_path()))?;
+                let (bind_ips, ctr_entry) = parse_config(cfg.path().as_path())?;
 
                 let network_name: String = match cfg.path().file_name() {
                     // This isn't *completely* safe, but I do not foresee many
@@ -81,11 +85,11 @@ pub fn parse_configs(
                     match ip {
                         IpAddr::V4(a) => listen_ips_4
                             .entry(network_name.clone())
-                            .or_insert(Vec::new())
+                            .or_insert_with(Vec::new)
                             .push(a),
                         IpAddr::V6(b) => listen_ips_6
                             .entry(network_name.clone())
-                            .or_insert(Vec::new())
+                            .or_insert_with(Vec::new)
                             .push(b),
                     }
                 }
@@ -94,7 +98,7 @@ pub fn parse_configs(
                     // Container network membership
                     let ctr_networks = network_membership
                         .entry(entry.id.clone())
-                        .or_insert(Vec::new());
+                        .or_insert_with(Vec::new);
                     ctr_networks.push(network_name.clone());
 
                     // Container IP addresses
@@ -102,31 +106,33 @@ pub fn parse_configs(
                     if let Some(v4) = entry.v4 {
                         reverse
                             .entry(network_name.clone())
-                            .or_insert(HashMap::new())
+                            .or_insert_with(HashMap::new)
                             .entry(std::net::IpAddr::V4(v4))
-                            .or_insert(Vec::new())
+                            .or_insert_with(Vec::new)
                             .append(&mut entry.aliases.clone());
                         new_ctr_ips.push(IpAddr::V4(v4));
                     }
                     if let Some(v6) = entry.v6 {
                         reverse
                             .entry(network_name.clone())
-                            .or_insert(HashMap::new())
+                            .or_insert_with(HashMap::new)
                             .entry(std::net::IpAddr::V6(v6))
-                            .or_insert(Vec::new())
+                            .or_insert_with(Vec::new)
                             .append(&mut entry.aliases.clone());
                         new_ctr_ips.push(IpAddr::V6(v6));
                     }
 
-                    let ctr_ips = container_ips.entry(entry.id.clone()).or_insert(Vec::new());
+                    let ctr_ips = container_ips
+                        .entry(entry.id.clone())
+                        .or_insert_with(Vec::new);
                     ctr_ips.append(&mut new_ctr_ips.clone());
 
                     // Network aliases to IPs map.
                     let network_aliases = network_names
                         .entry(network_name.clone())
-                        .or_insert(HashMap::new());
+                        .or_insert_with(HashMap::new);
                     for alias in entry.aliases {
-                        let alias_entries = network_aliases.entry(alias).or_insert(Vec::new());
+                        let alias_entries = network_aliases.entry(alias).or_insert_with(Vec::new);
                         alias_entries.append(&mut new_ctr_ips.clone());
                     }
                 }
@@ -142,7 +148,7 @@ pub fn parse_configs(
         match network_membership.get(&ctr_id) {
             Some(s) => {
                 for ip in ips {
-                    let ip_networks = ctrs.entry(ip).or_insert(Vec::new());
+                    let ip_networks = ctrs.entry(ip).or_insert_with(Vec::new);
                     ip_networks.append(&mut s.clone());
                 }
             }
@@ -182,14 +188,14 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
     let mut ctrs: Vec<CtrEntry> = Vec::new();
 
     // Split on newline, parse each line
-    for line in content.split("\n") {
+    for line in content.split('\n') {
         if line.is_empty() {
             continue;
         }
         if is_first {
             // First line is comma-separated V4 and V6
-            if line.contains(",") {
-                for ip in line.split(",") {
+            if line.contains(',') {
+                for ip in line.split(',') {
                     let local_ip = match ip.parse() {
                         Ok(l) => l,
                         Err(e) => {
@@ -219,7 +225,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
         }
 
         // Split on space
-        let parts = line.split(" ").collect::<Vec<&str>>();
+        let parts = line.split(' ').collect::<Vec<&str>>();
         if parts.len() != 4 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -259,11 +265,11 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             v6_addr = Some(ipv6);
         }
         let aliases: Vec<String> = parts[3]
-            .split(",")
+            .split(',')
             .map(|x| x.to_string())
             .collect::<Vec<String>>();
 
-        if aliases.len() == 0 {
+        if aliases.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
@@ -283,7 +289,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
     }
 
     // Must provide at least one bind address
-    if bind_addrs.len() == 0 {
+    if bind_addrs.is_empty() {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!(
