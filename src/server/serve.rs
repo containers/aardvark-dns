@@ -183,8 +183,9 @@ fn core_serve_loop(
 
             if let Ok(_) = handle_signal.join() {
                 send_broadcast(&tx);
-                let mut switch = kill_switch.lock().unwrap();
-                *switch = true;
+                if let Ok(mut switch) = kill_switch.lock() {
+                    *switch = true;
+                };
 
                 // kill servers
                 // TODO: we don't need these two loops anymore. But lets remove when some testing
@@ -206,7 +207,9 @@ fn core_serve_loop(
             }
 
             for handle in thread_handles {
-                let _ = handle.join().unwrap();
+                if let Err(e) = handle.join() {
+                    error!("Error from thread: {:?}", e);
+                }
             }
 
             // close and drop broadcast channel
