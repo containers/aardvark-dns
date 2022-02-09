@@ -16,7 +16,7 @@ trust-dns-server = "0.20.3"
 trust-dns-proto = "0.20.4"
 trust-dns-client = "0.20.4"
 anyhow = "1.0.53"
-futures-util = "0.3.19"
+futures-util = "0.3.21"
 signal-hook = "0.3.13"
 tokio = { version = "1.15.0", features = ["tokio-macros", "full"] }
 async-broadcast = "0.3.4"
