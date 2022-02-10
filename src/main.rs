@@ -1,6 +1,11 @@
+use std::env;
+use std::str::FromStr;
+
 use clap::{Parser, Subcommand};
 
 use aardvark_dns::commands::{run, version};
+use log::Level;
+use syslog::{BasicLogger, Facility, Formatter3164};
 
 #[derive(Parser, Debug)]
 #[clap(version = env!("VERGEN_BUILD_SEMVER"))]
@@ -28,7 +33,37 @@ enum SubCommand {
 }
 
 fn main() {
-    env_logger::builder().format_timestamp(None).init();
+    let formatter = Formatter3164 {
+        facility: Facility::LOG_USER,
+        hostname: None,
+        process: "aardvark-dns".into(),
+        pid: 0,
+    };
+
+    let log_level = match env::var("RUST_LOG") {
+        Ok(val) => match Level::from_str(&val) {
+            Ok(level) => level,
+            Err(e) => {
+                eprintln!("failed to parse RUST_LOG level: {}", e);
+                Level::Info
+            }
+        },
+        Err(_) => Level::Info,
+    };
+
+    match syslog::unix(formatter) {
+        Ok(logger) => {
+            if let Err(e) = log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
+                .map(|()| log::set_max_level(log_level.to_level_filter()))
+            {
+                eprintln!("failed to initialize syslog logger: {}", e)
+            };
+        }
+        Err(e) => {
+            eprintln!("failed to connect to syslog: {}", e);
+        }
+    }
+
     let opts = Opts::parse();
 
     let dir = opts.config.unwrap_or_else(|| String::from("/dev/stdin"));
