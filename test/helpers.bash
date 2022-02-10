@@ -381,6 +381,7 @@ function create_network_infos() {
     local net_name=$1; shift
     local net_id=$1; shift
     local subnets=$1; shift
+    local interface_name=${net_name:0:7}
 
 
 
@@ -389,7 +390,7 @@ function create_network_infos() {
       "name": "$net_name",
       "id": "$net_id",
       "driver": "bridge",
-      "network_interface": "$net_name",
+      "network_interface": "$interface_name",
       "subnets": [
         $subnets
       ],
