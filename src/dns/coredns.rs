@@ -17,13 +17,12 @@ use trust_dns_proto::{
     xfer::{dns_handle::DnsHandle, DnsRequest},
     BufStreamHandle,
 };
-use trust_dns_server::{authority::ZoneType, store::in_memory::InMemoryAuthority};
 
 pub struct CoreDns {
     name: Name,                          // name or origin
+    network_name: String,                // raw network name
     address: IpAddr,                     // server address
     port: u32,                           // server port
-    authority: InMemoryAuthority,        // server authority
     backend: Arc<DNSBackend>,            // server's data store
     kill_switch: Arc<Mutex<bool>>,       // global kill_switch
     filter_search_domain: String,        // filter_search_domain
@@ -35,7 +34,7 @@ impl CoreDns {
     pub async fn new(
         address: IpAddr,
         port: u32,
-        name: &str,
+        network_name: &str,
         forward_addr: IpAddr,
         forward_port: u16,
         backend: Arc<DNSBackend>,
@@ -43,8 +42,22 @@ impl CoreDns {
         filter_search_domain: String,
         rx: async_broadcast::Receiver<bool>,
     ) -> anyhow::Result<Self> {
-        let name: Name = Name::parse(name, None).unwrap();
-        let authority = InMemoryAuthority::empty(name.clone(), ZoneType::Primary, false);
+        // this does not have to be unique, if we fail getting server name later
+        // start with empty name
+        let mut name: Name = Name::new();
+
+        if network_name.len() > 10 {
+            // to long to set this as name of dns server strip only first 10 chars
+            // trust dns limitation, this is nothing to worry about since server name
+            // has nothing to do without DNS logic, name can be random as well.
+            if let Ok(n) = Name::parse(&network_name[..10], None) {
+                name = n;
+            }
+        } else {
+            if let Ok(n) = Name::parse(&network_name, None) {
+                name = n;
+            }
+        }
 
         debug!(
             "Will Forward dns requests to udp://{:?}:{}",
@@ -66,11 +79,13 @@ impl CoreDns {
             }
         }
 
+        let network_name = network_name.to_owned().to_string();
+
         Ok(CoreDns {
             name,
+            network_name,
             address,
             port,
-            authority,
             backend,
             kill_switch,
             filter_search_domain,
@@ -82,39 +97,6 @@ impl CoreDns {
     pub async fn run(&mut self) -> anyhow::Result<()> {
         tokio::try_join!(self.register_port())?;
         Ok(())
-    }
-
-    pub fn update_record(&mut self, name: &str, addr: IpAddr, ttl: u32) {
-        //Note: this is important we must accept `_` underscore in record name.
-        // If IDNA fails try parsing with utf8, this is `RFC 952` breach but expected.
-        // Accept create origin name from str_relaxed so we could use underscore
-        let origin: Name = Name::from_str_relaxed(name).unwrap();
-        match addr {
-            IpAddr::V4(ipv4) => {
-                self.authority.upsert(
-                    Record::new()
-                        .set_name(origin.clone())
-                        .set_ttl(ttl)
-                        .set_rr_type(RecordType::A)
-                        .set_dns_class(DNSClass::IN)
-                        .set_rdata(RData::A(ipv4))
-                        .clone(),
-                    0,
-                );
-            }
-            IpAddr::V6(ipv6) => {
-                self.authority.upsert(
-                    Record::new()
-                        .set_name(origin.clone())
-                        .set_ttl(ttl)
-                        .set_rr_type(RecordType::AAAA)
-                        .set_dns_class(DNSClass::IN)
-                        .set_rdata(RData::AAAA(ipv6))
-                        .clone(),
-                    0,
-                );
-            }
-        }
     }
 
     // registers port supports udp for now
@@ -222,7 +204,7 @@ impl CoreDns {
                                     debug!(
                                 "No backend lookup found, try resolving in current resolvers entry"
                             );
-                                    match self.backend.name_mappings.get(&self.name.to_ascii()) {
+                                    match self.backend.name_mappings.get(&self.network_name) {
                                         Some(container_mappings) => {
                                             for (key, value) in container_mappings {
 
