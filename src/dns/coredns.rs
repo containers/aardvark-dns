@@ -118,11 +118,25 @@ impl CoreDns {
                     break;
                 },
                 v = receiver.next() => {
-                    match v.unwrap() {
+                    let msg_received = match v {
+                        Some(value) => value,
+                        _ => {
+                            // None received, nothing to process so continue
+                            debug!("None recevied from stream, continue the loop");
+                            continue;
+                        }
+                    };
+                    match msg_received {
                         Ok(msg) => {
                             let src_address = msg.addr().clone();
                             let sender = sender.clone();
-                            let (name, record_type, mut req) = parse_dns_msg(msg).unwrap();
+                            let (name, record_type, mut req) = match parse_dns_msg(msg) {
+                                Some((name, record_type, req)) => (name, record_type, req),
+                                _ => {
+                                    error!("None received while parsing dns message, this is not expected server will ignore this message");
+                                    continue;
+                                }
+                            };
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
 
                             // Create debug and trace info for key parameters.
@@ -136,9 +150,10 @@ impl CoreDns {
                             );
                             trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
                             trace!(
-                                "server backend kill switch: {:?}",
-                                self.kill_switch.lock().unwrap()
+                                 "server backend kill switch: {:?}",
+                                 self.kill_switch.lock().is_ok()
                             );
+
 
                             // if record type is PTR try resolving early and return if record found
                             if record_type == RecordType::PTR {
@@ -217,11 +232,23 @@ impl CoreDns {
                                                 filter_domain_ndots_complete.push_str(".");
 
                                                 if request_name.ends_with(&self.filter_search_domain) {
-                                                    request_name = request_name.strip_suffix(&self.filter_search_domain).unwrap().to_string();
+                                                    request_name = match request_name.strip_suffix(&self.filter_search_domain) {
+                                                        Some(value) => value.to_string(),
+                                                        _ => {
+                                                            error!("Unable to parse string suffix, ignore parsing this request");
+                                                            continue;
+                                                        }
+                                                    };
                                                     request_name.push_str(".");
                                                 }
                                                 if request_name.ends_with(&filter_domain_ndots_complete) {
-                                                    request_name = request_name.strip_suffix(&filter_domain_ndots_complete).unwrap().to_string();
+                                                    request_name = match request_name.strip_suffix(&filter_domain_ndots_complete) {
+                                                        Some(value) => value.to_string(),
+                                                        _ => {
+                                                            error!("Unable to parse string suffix, ignore parsing this request");
+                                                            continue;
+                                                        }
+                                                    };
                                                     request_name.push_str(".");
                                                 }
 
@@ -238,7 +265,14 @@ impl CoreDns {
                                     }
                                 }
                             }
-                            let record_name: Name = Name::from_str_relaxed(name.as_str()).unwrap();
+                            let record_name: Name = match Name::from_str_relaxed(name.as_str()) {
+                                Ok(name) => name,
+                                Err(e) => {
+                                    // log and continue server
+                                    error!("Error while parsing record name: {:?}", e);
+                                    continue;
+                                }
+                            };
                             if resolved_ip_list.len() > 0
                                 && (record_type == RecordType::A || record_type == RecordType::AAAA)
                             {
@@ -276,7 +310,7 @@ impl CoreDns {
                                 if no_proxy || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
-                                    reply(sender.clone(), src_address, &nx_message).unwrap();
+                                    reply(sender.clone(), src_address, &nx_message);
                                 } else {
                                     let nameservers = self.resolv_conf.nameservers.clone();
                                     tokio::spawn(async move {
