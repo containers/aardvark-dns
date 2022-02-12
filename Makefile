@@ -82,7 +82,7 @@ unit: $(CARGO_TARGET_DIR)
 #.PHONY: integration
 integration: $(CARGO_TARGET_DIR)
 	# needs to be run as root or with podman unshare --rootless-netns
-	AARDVARK_NO_PROXY=1 bats test/
+	bats test/
 
 .PHONY: mock-rpm
 mock-rpm:
