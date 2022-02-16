@@ -75,8 +75,12 @@ impl DNSBackend {
                 }
             };
             // if this is a fully qualified name, remove dots so backend can perform search
-            if name.len() > 0 && name.chars().last().unwrap() == '.' {
-                name = &name[0..name.len() - 1];
+            if name.len() > 0 {
+                if let Some(lastchar) = name.chars().last() {
+                    if lastchar == '.' {
+                        name = &name[0..name.len() - 1];
+                    }
+                }
             }
             if let Some(addrs) = net_names.get(name) {
                 results.append(&mut addrs.clone());

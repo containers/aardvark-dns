@@ -53,9 +53,10 @@ pub fn parse_configs(
         match config {
             Ok(cfg) => {
                 // dont process aardvark pid files
-                // unwrap is safe here since file already exists
-                if cfg.path().file_name().unwrap() == constants::AARDVARK_PID_FILE {
-                    continue;
+                if let Some(path) = cfg.path().file_name() {
+                    if path == constants::AARDVARK_PID_FILE {
+                        continue;
+                    }
                 }
                 let (bind_ips, ctr_entry) = parse_config(&(cfg.path().as_path()))?;
 
