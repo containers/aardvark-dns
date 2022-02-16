@@ -478,7 +478,7 @@ function basic_host_setup() {
 
     # wait for slirp4netns, we could use --ready-fd but
     # I cannot make this work because bach keeps the pipe open so we cannot wait for EOF
-    sleep 0.5
+    sleep 2.0
 
     # create new resolv.conf with slirp4netns dns
     echo "nameserver 10.0.2.3" > "$AARDVARK_TMPDIR/resolv.conf"
