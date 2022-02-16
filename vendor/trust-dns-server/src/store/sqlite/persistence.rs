@@ -11,10 +11,10 @@ use std::iter::Iterator;
 use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 
-use chrono;
 use log::error;
 use rusqlite::types::ToSql;
 use rusqlite::{self, Connection};
+use time;
 
 use crate::error::{PersistenceErrorKind, PersistenceResult};
 use crate::proto::rr::Record;
@@ -87,7 +87,7 @@ impl Journal {
             record.emit(&mut encoder)?;
         }
 
-        let timestamp = chrono::Utc::now();
+        let timestamp = time::OffsetDateTime::now_utc();
         let client_id: i64 = 0; // TODO: we need better id information about the client, like pub_key
         let soa_serial: i64 = i64::from(soa_serial);
 
@@ -200,7 +200,7 @@ impl Journal {
         )?;
 
         let tdns_schema_opt: Option<Result<String, _>> =
-            stmt.query_map(None::<&dyn ToSql>, |row| row.get(0))?.next();
+            stmt.query_map([], |row| row.get(0))?.next();
 
         let tdns_schema = match tdns_schema_opt {
             Some(Ok(string)) => string,
@@ -214,7 +214,7 @@ impl Journal {
             "SELECT version
                                             \
                                                 FROM tdns_schema",
-            None::<&dyn ToSql>,
+            [],
             |row| row.get(0),
         )?;
 
@@ -260,15 +260,16 @@ impl Journal {
                                             version INTEGER NOT NULL
                                         \
                                             )",
-            None::<&dyn ToSql>,
+            [],
         )?;
         //
         assert_eq!(count, 0);
 
-        let count = self.conn.lock().expect("conn poisoned").execute(
-            "INSERT INTO tdns_schema (version) VALUES (0)",
-            None::<&dyn ToSql>,
-        )?;
+        let count = self
+            .conn
+            .lock()
+            .expect("conn poisoned")
+            .execute("INSERT INTO tdns_schema (version) VALUES (0)", [])?;
         //
         assert_eq!(count, 1);
 
@@ -291,7 +292,7 @@ impl Journal {
                                             record         BLOB NOT NULL
                                         \
                                             )",
-            None::<&dyn ToSql>,
+            [],
         )?;
         //
         assert_eq!(count, 1);
