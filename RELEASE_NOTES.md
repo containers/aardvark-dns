@@ -1,5 +1,8 @@
 # Release Notes
 
+## v1.0.0
+- First release of aardvark-dns.
+
 ## v1.0.0-RC2
 - Slew of bug fixes related to reverse lookups, NXDOMAIN returns, and so on. Getting very close to first official release.
 
