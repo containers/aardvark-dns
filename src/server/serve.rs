@@ -271,17 +271,22 @@ async fn start_dns_server(
 
 #[tokio::main]
 async fn send_broadcast(tx: &async_broadcast::Sender<bool>) {
-    tx.broadcast(true).await.unwrap();
+    if let Err(e) = tx.broadcast(true).await {
+        error!("unable to broadcast to child threads: {:?}", e);
+    }
 }
 
 fn server_refresh_request(address_string: String) {
-    let address = address_string.parse().unwrap();
-    let conn = UdpClientConnection::with_timeout(address, Duration::from_millis(5)).unwrap();
-    // and then create the Client
-    let client = SyncClient::new(conn);
-    // server will be killed by last request
-    let name = Name::from_str("anything.").unwrap();
-    match client.query(&name, DNSClass::IN, RecordType::A) {
-        _ => {}
+    if let Ok(address) = address_string.parse() {
+        if let Ok(conn) = UdpClientConnection::with_timeout(address, Duration::from_millis(5)) {
+            // and then create the Client
+            let client = SyncClient::new(conn);
+            // server will be killed by last request
+            if let Ok(name) = Name::from_str("anything.") {
+                match client.query(&name, DNSClass::IN, RecordType::A) {
+                    _ => {}
+                }
+            }
+        }
     }
 }
