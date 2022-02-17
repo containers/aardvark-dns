@@ -1048,14 +1048,13 @@ dependencies = [
 
 [[package]]
 name = "trust-dns-server"
-version = "0.20.3"
+version = "0.20.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a29ad5a3b1d988b4dfc6b428578366c4fabf484aece2b3c3a15cab9c272cc0a"
+checksum = "88890d985c620b6027a0b85b71b772d35c6fcc3c8e6bd4e326af7dae0ea75d45"
 dependencies = [
  "async-trait",
  "bytes",
  "cfg-if",
- "chrono",
  "enum-as-inner",
  "env_logger",
  "futures-executor",
@@ -1063,6 +1062,7 @@ dependencies = [
  "log",
  "serde",
  "thiserror",
+ "time 0.3.7",
  "tokio",
  "toml",
  "trust-dns-client",
