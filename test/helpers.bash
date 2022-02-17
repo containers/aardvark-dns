@@ -293,7 +293,20 @@ function create_netns() {
     # create a new netns and mountns and run a sleep process to keep it alive
     # we have to redirect stdout/err to /dev/null otherwise bats will hang
     unshare -mn sleep inf &>/dev/null &
-    echo $!
+    pid=$!
+
+    # we have to wait for unshare and check that we have a new ns before returning
+    local timeout=2
+    while [[ $timeout -gt 1 ]]; do
+        if [[ "$(ls -l /proc/self/ns/net)" != "$(ls -l /proc/$pid/ns/net)" ]]; then
+            echo $pid
+            return
+        fi
+        sleep 1
+        let timeout=$timeout-1
+    done
+
+    die "Timed out waiting for unshare new netns"
 }
 
 function get_container_netns_path() {
@@ -470,19 +483,30 @@ function basic_host_setup() {
 	# unsetting does not work, it would use the default address
 	export DBUS_SYSTEM_BUS_ADDRESS=
 	AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
+}
 
+function setup_slirp4netns() {
     command -v slirp4netns || die "slirp4netns not installed"
 
-    slirp4netns -c $HOST_NS_PID tap0 &>/dev/null &
+    slirp4netns -c $HOST_NS_PID tap0 &>"$AARDVARK_TMPDIR/slirp4.log" &
     SLIRP4NETNS_PID=$!
-
-    # wait for slirp4netns, we could use --ready-fd but
-    # I cannot make this work because bach keeps the pipe open so we cannot wait for EOF
-    sleep 5.0
 
     # create new resolv.conf with slirp4netns dns
     echo "nameserver 10.0.2.3" > "$AARDVARK_TMPDIR/resolv.conf"
     run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
+
+    local timeout=6
+    while [[ $timeout -gt 1 ]]; do
+        run_in_host_netns ip addr
+        if [[ "$output" =~ "tap0" ]]; then
+            return
+        fi
+        sleep 1
+        let timeout=$timeout-1
+    done
+
+    cat "$AARDVARK_TMPDIR/slirp4.log"
+    die "Timed out waiting for slirp4netns to start"
 }
 
 function basic_teardown() {
@@ -505,7 +529,11 @@ function teardown() {
         kill -9 "${CONTAINER_NS_PIDS[$i]}"
     done
 
-    kill -9 $SLIRP4NETNS_PID
+
+    if [[ -n "$SLIRP4NETNS_PID" ]]; then
+        kill -9 $SLIRP4NETNS_PID
+        SLIRP4NETNS_PID=""
+    fi
 
     # Finally kill the host netns
     if [ ! -z "$HOST_NS_PID" ]; then

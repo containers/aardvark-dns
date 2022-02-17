@@ -7,6 +7,8 @@ load helpers
 
 
 @test "two containers on different networks" {
+	setup_slirp4netns
+
 	# container a1 on subnet a
 	subnet_a=$(random_subnet 5)
 	create_config "podman1" $(random_string 64) "aone" "$subnet_a"
@@ -86,7 +88,7 @@ load helpers
 	b2_network_info="{$new_network_info}"
 	ab2_config=$(jq -r ".networks +=  $b2_network" <<<"$a2_config")
 	ab2_config=$(jq -r ".network_info += $b2_network_info" <<<"$ab2_config")
-	
+
 	create_container "$ab2_config"
 	ab2_pid=$CONTAINER_NS_PID
 
