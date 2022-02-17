@@ -6,6 +6,8 @@
 load helpers
 
 @test "basic container - dns itself" {
+	setup_slirp4netns
+
 	subnet_a=$(random_subnet 5)
 	create_config "podman1" $(random_string 64) "aone" "$subnet_a" "a1" "1a"
 	config_a1=$config
