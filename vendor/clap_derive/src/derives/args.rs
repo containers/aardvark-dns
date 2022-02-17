@@ -87,10 +87,10 @@ pub fn gen_for_struct(
         )]
         #[deny(clippy::correctness)]
         impl #impl_generics clap::Args for #struct_name #ty_generics #where_clause {
-            fn augment_args<'b>(#app_var: clap::App<'b>) -> clap::App<'b> {
+            fn augment_args<'b>(#app_var: clap::Command<'b>) -> clap::Command<'b> {
                 #augmentation
             }
-            fn augment_args_for_update<'b>(#app_var: clap::App<'b>) -> clap::App<'b> {
+            fn augment_args_for_update<'b>(#app_var: clap::Command<'b>) -> clap::Command<'b> {
                 #augmentation_update
             }
         }
@@ -145,7 +145,7 @@ pub fn gen_from_arg_matches_for_struct(
 }
 
 /// Generate a block of code to add arguments/subcommands corresponding to
-/// the `fields` to an app.
+/// the `fields` to an cmd.
 pub fn gen_augment(
     fields: &Punctuated<Field, Comma>,
     app_var: &Ident,
@@ -168,6 +168,7 @@ pub fn gen_augment(
                 quote!()
             } else {
                 quote_spanned! { kind.span()=>
+                    #[allow(deprecated)]
                     let #app_var = #app_var.setting(
                         clap::AppSettings::SubcommandRequiredElseHelp
                     );
@@ -213,20 +214,21 @@ pub fn gen_augment(
             Kind::Flatten => {
                 let ty = &field.ty;
                 let old_heading_var = format_ident!("__clap_old_heading");
-                let help_heading = attrs.help_heading();
+                let next_help_heading = attrs.next_help_heading();
+                let next_display_order = attrs.next_display_order();
                 if override_required {
                     Some(quote_spanned! { kind.span()=>
-                        let #old_heading_var = #app_var.get_help_heading();
-                        let #app_var = #app_var #help_heading;
+                        let #old_heading_var = #app_var.get_next_help_heading();
+                        let #app_var = #app_var #next_help_heading #next_display_order;
                         let #app_var = <#ty as clap::Args>::augment_args_for_update(#app_var);
-                        let #app_var = #app_var.help_heading(#old_heading_var);
+                        let #app_var = #app_var.next_help_heading(#old_heading_var);
                     })
                 } else {
                     Some(quote_spanned! { kind.span()=>
-                        let #old_heading_var = #app_var.get_help_heading();
-                        let #app_var = #app_var #help_heading;
+                        let #old_heading_var = #app_var.get_next_help_heading();
+                        let #app_var = #app_var #next_help_heading #next_display_order;
                         let #app_var = <#ty as clap::Args>::augment_args(#app_var);
-                        let #app_var = #app_var.help_heading(#old_heading_var);
+                        let #app_var = #app_var.next_help_heading(#old_heading_var);
                     })
                 }
             }

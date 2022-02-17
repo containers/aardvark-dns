@@ -9,7 +9,7 @@ use std::{
 
 // Internal
 use crate::{
-    build::{arg::display_arg_val, App, AppSettings, Arg, ArgSettings},
+    build::{display_arg_val, Arg, Command},
     output::{fmt::Colorizer, Usage},
 };
 
@@ -20,18 +20,17 @@ use textwrap::core::display_width;
 /// `clap` Help Writer.
 ///
 /// Wraps a writer stream providing different methods to generate help for `clap` objects.
-pub(crate) struct Help<'help, 'app, 'writer> {
+pub(crate) struct Help<'help, 'cmd, 'writer> {
     writer: HelpWriter<'writer>,
-    app: &'app App<'help>,
-    usage: &'app Usage<'help, 'app>,
+    cmd: &'cmd Command<'help>,
+    usage: &'cmd Usage<'help, 'cmd>,
     next_line_help: bool,
-    hide_pv: bool,
     term_w: usize,
     use_long: bool,
 }
 
 // Public Functions
-impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
+impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
     const DEFAULT_TEMPLATE: &'static str = "\
         {before-help}{bin} {version}\n\
         {author-with-newline}{about-with-newline}\n\
@@ -49,31 +48,29 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     /// Create a new `Help` instance.
     pub(crate) fn new(
         writer: HelpWriter<'writer>,
-        app: &'app App<'help>,
-        usage: &'app Usage<'help, 'app>,
+        cmd: &'cmd Command<'help>,
+        usage: &'cmd Usage<'help, 'cmd>,
         use_long: bool,
     ) -> Self {
         debug!("Help::new");
-        let term_w = match app.term_w {
+        let term_w = match cmd.get_term_width() {
             Some(0) => usize::MAX,
             Some(w) => w,
             None => cmp::min(
                 dimensions().map_or(100, |(w, _)| w),
-                match app.max_w {
+                match cmd.get_max_term_width() {
                     None | Some(0) => usize::MAX,
                     Some(mw) => mw,
                 },
             ),
         };
-        let next_line_help = app.is_set(AppSettings::NextLineHelp);
-        let hide_pv = app.is_set(AppSettings::HidePossibleValues);
+        let next_line_help = cmd.is_next_line_help_set();
 
         Help {
             writer,
-            app,
+            cmd,
             usage,
             next_line_help,
-            hide_pv,
             term_w,
             use_long,
         }
@@ -83,20 +80,20 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     pub(crate) fn write_help(&mut self) -> io::Result<()> {
         debug!("Help::write_help");
 
-        if let Some(h) = self.app.help_str {
+        if let Some(h) = self.cmd.get_override_help() {
             self.none(h)?;
-        } else if let Some(tmpl) = self.app.template {
+        } else if let Some(tmpl) = self.cmd.get_help_template() {
             self.write_templated_help(tmpl)?;
         } else {
             let pos = self
-                .app
+                .cmd
                 .get_positionals()
                 .any(|arg| should_show_arg(self.use_long, arg));
             let non_pos = self
-                .app
+                .cmd
                 .get_non_positionals()
                 .any(|arg| should_show_arg(self.use_long, arg));
-            let subcmds = self.app.has_visible_subcommands();
+            let subcmds = self.cmd.has_visible_subcommands();
 
             if non_pos || pos || subcmds {
                 self.write_templated_help(Self::DEFAULT_TEMPLATE)?;
@@ -124,7 +121,7 @@ macro_rules! write_method {
 }
 
 // Methods to write Arg help.
-impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
+impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
     #[inline(never)]
     fn good<T: Into<String> + AsRef<[u8]>>(&mut self, msg: T) -> io::Result<()> {
         write_method!(self, msg, good)
@@ -282,9 +279,9 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     fn val(&mut self, arg: &Arg<'help>) -> io::Result<()> {
         debug!("Help::val: arg={}", arg.name);
         let mut need_closing_bracket = false;
-        if arg.is_set(ArgSettings::TakesValue) && !arg.is_positional() {
+        if arg.is_takes_value_set() && !arg.is_positional() {
             let is_optional_val = arg.min_vals == Some(0);
-            let sep = if arg.is_set(ArgSettings::RequireEquals) {
+            let sep = if arg.is_require_equals_set() {
                 if is_optional_val {
                     need_closing_bracket = true;
                     "[="
@@ -300,7 +297,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
             self.none(sep)?;
         }
 
-        if arg.is_set(ArgSettings::TakesValue) || arg.is_positional() {
+        if arg.is_takes_value_set() || arg.is_positional() {
             display_arg_val(
                 arg,
                 |s, good| if good { self.good(s) } else { self.none(s) },
@@ -356,9 +353,11 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     fn write_before_help(&mut self) -> io::Result<()> {
         debug!("Help::write_before_help");
         let before_help = if self.use_long {
-            self.app.before_long_help.or(self.app.before_help)
+            self.cmd
+                .get_before_long_help()
+                .or_else(|| self.cmd.get_before_help())
         } else {
-            self.app.before_help
+            self.cmd.get_before_help()
         };
         if let Some(output) = before_help {
             self.none(text_wrapper(&output.replace("{n}", "\n"), self.term_w))?;
@@ -370,9 +369,11 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     fn write_after_help(&mut self) -> io::Result<()> {
         debug!("Help::write_after_help");
         let after_help = if self.use_long {
-            self.app.after_long_help.or(self.app.after_help)
+            self.cmd
+                .get_after_long_help()
+                .or_else(|| self.cmd.get_after_help())
         } else {
-            self.app.after_help
+            self.cmd.get_after_help()
         };
         if let Some(output) = after_help {
             self.none("\n\n")?;
@@ -476,7 +477,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     }
 
     fn arg_next_line_help(&self, arg: &Arg<'help>, spec_vals: &str, longest: usize) -> bool {
-        if self.next_line_help || arg.is_set(ArgSettings::NextLineHelp) || self.use_long {
+        if self.next_line_help || arg.is_next_line_help_set() || self.use_long {
             // setting_next_line
             true
         } else {
@@ -495,12 +496,12 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
         let mut spec_vals = vec![];
         #[cfg(feature = "env")]
         if let Some(ref env) = a.env {
-            if !a.is_set(ArgSettings::HideEnv) {
+            if !a.is_hide_env_set() {
                 debug!(
                     "Help::spec_vals: Found environment variable...[{:?}:{:?}]",
                     env.0, env.1
                 );
-                let env_val = if !a.is_set(ArgSettings::HideEnvValues) {
+                let env_val = if !a.is_hide_env_values_set() {
                     format!(
                         "={}",
                         env.1
@@ -514,7 +515,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
                 spec_vals.push(env_info);
             }
         }
-        if !a.is_set(ArgSettings::HideDefaultValue) && !a.default_vals.is_empty() {
+        if !a.is_hide_default_value_set() && !a.default_vals.is_empty() {
             debug!(
                 "Help::spec_vals: Found default value...[{:?}]",
                 a.default_vals
@@ -571,10 +572,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
             }
         }
 
-        if !self.hide_pv
-            && !a.is_set(ArgSettings::HidePossibleValues)
-            && !a.possible_vals.is_empty()
-        {
+        if !a.is_hide_possible_values_set() && !a.possible_vals.is_empty() {
             debug!(
                 "Help::spec_vals: Found possible vals...{:?}",
                 a.possible_vals
@@ -584,7 +582,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
                 .possible_vals
                 .iter()
                 .filter_map(|value| {
-                    if value.is_hidden() {
+                    if value.is_hide_set() {
                         None
                     } else if value.get_name().contains(char::is_whitespace) {
                         Some(format!("{:?}", value.get_name()))
@@ -612,9 +610,9 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
 
     fn write_about(&mut self, before_new_line: bool, after_new_line: bool) -> io::Result<()> {
         let about = if self.use_long {
-            self.app.long_about.or(self.app.about)
+            self.cmd.get_long_about().or_else(|| self.cmd.get_about())
         } else {
-            self.app.about
+            self.cmd.get_about()
         };
         if let Some(output) = about {
             if before_new_line {
@@ -629,7 +627,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     }
 
     fn write_author(&mut self, before_new_line: bool, after_new_line: bool) -> io::Result<()> {
-        if let Some(author) = self.app.author {
+        if let Some(author) = self.cmd.get_author() {
             if before_new_line {
                 self.none("\n")?;
             }
@@ -642,7 +640,10 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     }
 
     fn write_version(&mut self) -> io::Result<()> {
-        let version = self.app.version.or(self.app.long_version);
+        let version = self
+            .cmd
+            .get_version()
+            .or_else(|| self.cmd.get_long_version());
         if let Some(output) = version {
             self.none(text_wrapper(output, self.term_w))?;
         }
@@ -651,32 +652,38 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
 }
 
 /// Methods to write a single subcommand
-impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
+impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
     fn write_subcommand(
         &mut self,
         sc_str: &str,
-        app: &App<'help>,
+        cmd: &Command<'help>,
         next_line_help: bool,
         longest: usize,
     ) -> io::Result<()> {
         debug!("Help::write_subcommand");
 
-        let spec_vals = &self.sc_spec_vals(app);
+        let spec_vals = &self.sc_spec_vals(cmd);
 
-        let about = app.about.or(app.long_about).unwrap_or("");
+        let about = cmd
+            .get_about()
+            .or_else(|| cmd.get_long_about())
+            .unwrap_or("");
 
         self.subcmd(sc_str, next_line_help, longest)?;
         self.help(false, about, spec_vals, next_line_help, longest)
     }
 
-    fn sc_spec_vals(&self, a: &App) -> String {
-        debug!("Help::sc_spec_vals: a={}", a.name);
+    fn sc_spec_vals(&self, a: &Command) -> String {
+        debug!("Help::sc_spec_vals: a={}", a.get_name());
         let mut spec_vals = vec![];
-        if !a.aliases.is_empty() || !a.short_flag_aliases.is_empty() {
-            debug!("Help::spec_vals: Found aliases...{:?}", a.aliases);
+        if 0 < a.get_all_aliases().count() || 0 < a.get_all_short_flag_aliases().count() {
+            debug!(
+                "Help::spec_vals: Found aliases...{:?}",
+                a.get_all_aliases().collect::<Vec<_>>()
+            );
             debug!(
                 "Help::spec_vals: Found short flag aliases...{:?}",
-                a.short_flag_aliases
+                a.get_all_short_flag_aliases().collect::<Vec<_>>()
             );
 
             let mut short_als = a
@@ -697,13 +704,18 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
         spec_vals.join(" ")
     }
 
-    fn subcommand_next_line_help(&self, app: &App<'help>, spec_vals: &str, longest: usize) -> bool {
+    fn subcommand_next_line_help(
+        &self,
+        cmd: &Command<'help>,
+        spec_vals: &str,
+        longest: usize,
+    ) -> bool {
         if self.next_line_help | self.use_long {
             // setting_next_line
             true
         } else {
             // force_next_line
-            let h = app.about.unwrap_or("");
+            let h = cmd.get_about().unwrap_or("");
             let h_w = display_width(h) + display_width(spec_vals);
             let taken = longest + 12;
             self.term_w >= taken
@@ -725,27 +737,26 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
 }
 
 // Methods to write Parser help.
-impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
+impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
     /// Writes help for all arguments (options, flags, args, subcommands)
     /// including titles of a Parser Object to the wrapped stream.
     pub(crate) fn write_all_args(&mut self) -> io::Result<()> {
         debug!("Help::write_all_args");
         let pos = self
-            .app
+            .cmd
             .get_positionals_with_no_heading()
             .filter(|arg| should_show_arg(self.use_long, arg))
             .collect::<Vec<_>>();
         let non_pos = self
-            .app
+            .cmd
             .get_non_positionals_with_no_heading()
             .filter(|arg| should_show_arg(self.use_long, arg))
             .collect::<Vec<_>>();
-        let subcmds = self.app.has_visible_subcommands();
+        let subcmds = self.cmd.has_visible_subcommands();
 
         let custom_headings = self
-            .app
-            .args
-            .args()
+            .cmd
+            .get_arguments()
             .filter_map(|arg| arg.get_help_heading())
             .collect::<IndexSet<_>>();
 
@@ -769,9 +780,8 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
         if !custom_headings.is_empty() {
             for heading in custom_headings {
                 let args = self
-                    .app
-                    .args
-                    .args()
+                    .cmd
+                    .get_arguments()
                     .filter(|a| {
                         if let Some(help_heading) = a.get_help_heading() {
                             return help_heading == heading;
@@ -797,19 +807,30 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
                 self.none("\n\n")?;
             }
 
-            self.warning(self.app.subcommand_heading.unwrap_or("SUBCOMMANDS"))?;
+            self.warning(
+                self.cmd
+                    .get_subcommand_help_heading()
+                    .unwrap_or("SUBCOMMANDS"),
+            )?;
             self.warning(":\n")?;
 
-            self.write_subcommands(self.app)?;
+            self.write_subcommands(self.cmd)?;
         }
 
         Ok(())
     }
 
     /// Will use next line help on writing subcommands.
-    fn will_subcommands_wrap(&self, subcommands: &[App<'help>], longest: usize) -> bool {
+    fn will_subcommands_wrap<'a>(
+        &self,
+        subcommands: impl IntoIterator<Item = &'a Command<'help>>,
+        longest: usize,
+    ) -> bool
+    where
+        'help: 'a,
+    {
         subcommands
-            .iter()
+            .into_iter()
             .filter(|&subcommand| should_show_subcommand(subcommand))
             .any(|subcommand| {
                 let spec_vals = &self.sc_spec_vals(subcommand);
@@ -818,24 +839,23 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     }
 
     /// Writes help for subcommands of a Parser Object to the wrapped stream.
-    fn write_subcommands(&mut self, app: &App<'help>) -> io::Result<()> {
+    fn write_subcommands(&mut self, cmd: &Command<'help>) -> io::Result<()> {
         debug!("Help::write_subcommands");
         // The shortest an arg can legally be is 2 (i.e. '-x')
         let mut longest = 2;
         let mut ord_v = Vec::new();
-        for subcommand in app
-            .subcommands
-            .iter()
+        for subcommand in cmd
+            .get_subcommands()
             .filter(|subcommand| should_show_subcommand(subcommand))
         {
             let mut sc_str = String::new();
-            if let Some(short) = subcommand.short_flag {
-                write!(sc_str, "-{}", short).unwrap();
+            sc_str.push_str(subcommand.get_name());
+            if let Some(short) = subcommand.get_short_flag() {
+                write!(sc_str, " -{}", short).unwrap();
             }
-            if let Some(long) = subcommand.long_flag {
-                write!(sc_str, "--{}", long).unwrap();
+            if let Some(long) = subcommand.get_long_flag() {
+                write!(sc_str, " --{}", long).unwrap();
             }
-            sc_str.push_str(&subcommand.name);
             longest = longest.max(display_width(&sc_str));
             ord_v.push((subcommand.get_display_order(), sc_str, subcommand));
         }
@@ -843,7 +863,7 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
 
         debug!("Help::write_subcommands longest = {}", longest);
 
-        let next_line_help = self.will_subcommands_wrap(&app.subcommands, longest);
+        let next_line_help = self.will_subcommands_wrap(cmd.get_subcommands(), longest);
 
         let mut first = true;
         for (_, sc_str, sc) in &ord_v {
@@ -861,15 +881,15 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
     fn write_bin_name(&mut self) -> io::Result<()> {
         debug!("Help::write_bin_name");
 
-        let bin_name = if let Some(bn) = self.app.bin_name.as_ref() {
+        let bin_name = if let Some(bn) = self.cmd.get_bin_name() {
             if bn.contains(' ') {
                 // In case we're dealing with subcommands i.e. git mv is translated to git-mv
                 bn.replace(' ', "-")
             } else {
-                text_wrapper(&self.app.name.replace("{n}", "\n"), self.term_w)
+                text_wrapper(&self.cmd.get_name().replace("{n}", "\n"), self.term_w)
             }
         } else {
-            text_wrapper(&self.app.name.replace("{n}", "\n"), self.term_w)
+            text_wrapper(&self.cmd.get_name().replace("{n}", "\n"), self.term_w)
         };
         self.good(&bin_name)?;
         Ok(())
@@ -877,12 +897,12 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
 }
 
 // Methods to write Parser help using templates.
-impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
+impl<'help, 'cmd, 'writer> Help<'help, 'cmd, 'writer> {
     /// Write help to stream for the parser in the format defined by the template.
     ///
-    /// For details about the template language see [`App::help_template`].
+    /// For details about the template language see [`Command::help_template`].
     ///
-    /// [`App::help_template`]: App::help_template()
+    /// [`Command::help_template`]: Command::help_template()
     fn write_templated_help(&mut self, template: &str) -> io::Result<()> {
         debug!("Help::write_templated_help");
 
@@ -960,13 +980,13 @@ impl<'help, 'app, 'writer> Help<'help, 'app, 'writer> {
                     "options" => {
                         // Include even those with a heading as we don't have a good way of
                         // handling help_heading in the template.
-                        self.write_args(&self.app.get_non_positionals().collect::<Vec<_>>())?;
+                        self.write_args(&self.cmd.get_non_positionals().collect::<Vec<_>>())?;
                     }
                     "positionals" => {
-                        self.write_args(&self.app.get_positionals().collect::<Vec<_>>())?;
+                        self.write_args(&self.cmd.get_positionals().collect::<Vec<_>>())?;
                     }
                     "subcommands" => {
-                        self.write_subcommands(self.app)?;
+                        self.write_subcommands(self.cmd)?;
                     }
                     "after-help" => {
                         self.write_after_help()?;
@@ -999,16 +1019,16 @@ pub(crate) enum HelpWriter<'writer> {
 
 fn should_show_arg(use_long: bool, arg: &Arg) -> bool {
     debug!("should_show_arg: use_long={:?}, arg={}", use_long, arg.name);
-    if arg.is_set(ArgSettings::Hidden) {
+    if arg.is_hide_set() {
         return false;
     }
-    (!arg.is_set(ArgSettings::HiddenLongHelp) && use_long)
-        || (!arg.is_set(ArgSettings::HiddenShortHelp) && !use_long)
-        || arg.is_set(ArgSettings::NextLineHelp)
+    (!arg.is_hide_long_help_set() && use_long)
+        || (!arg.is_hide_short_help_set() && !use_long)
+        || arg.is_next_line_help_set()
 }
 
-fn should_show_subcommand(subcommand: &App) -> bool {
-    !subcommand.is_set(AppSettings::Hidden)
+fn should_show_subcommand(subcommand: &Command) -> bool {
+    !subcommand.is_hide_set()
 }
 
 fn text_wrapper(help: &str, width: usize) -> String {

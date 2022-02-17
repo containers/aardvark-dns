@@ -12,23 +12,22 @@ use std::{
 use indexmap::IndexMap;
 
 // Internal
-use crate::{
-    parse::MatchedArg,
-    util::{Id, Key},
-    {Error, INVALID_UTF8},
-};
+use crate::parse::MatchedArg;
+use crate::parse::ValueSource;
+use crate::util::{Id, Key};
+use crate::{Error, INVALID_UTF8};
 
 /// Container for parse results.
 ///
 /// Used to get information about the arguments that were supplied to the program at runtime by
-/// the user. New instances of this struct are obtained by using the [`App::get_matches`] family of
+/// the user. New instances of this struct are obtained by using the [`Command::get_matches`] family of
 /// methods.
 ///
 /// # Examples
 ///
 /// ```no_run
-/// # use clap::{App, Arg};
-/// let matches = App::new("MyApp")
+/// # use clap::{Command, Arg};
+/// let matches = Command::new("MyApp")
 ///     .arg(Arg::new("out")
 ///         .long("output")
 ///         .required(true)
@@ -66,7 +65,7 @@ use crate::{
 ///     }
 /// }
 /// ```
-/// [`App::get_matches`]: crate::App::get_matches()
+/// [`Command::get_matches`]: crate::Command::get_matches()
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ArgMatches {
     #[cfg(debug_assertions)]
@@ -85,17 +84,17 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let mut app = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let mut cmd = Command::new("myapp")
     ///     .arg(Arg::new("output")
     ///         .takes_value(true));
     ///
-    /// let m = app
+    /// let m = cmd
     ///     .try_get_matches_from_mut(vec!["myapp", "something"])
     ///     .unwrap();
     /// assert!(m.args_present());
     ///
-    /// let m = app
+    /// let m = cmd
     ///     .try_get_matches_from_mut(vec!["myapp"])
     ///     .unwrap();
     /// assert!(! m.args_present());
@@ -126,8 +125,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("output")
     ///         .takes_value(true))
     ///     .get_matches_from(vec!["myapp", "something"]);
@@ -173,11 +172,11 @@ impl ArgMatches {
     ///
     #[cfg_attr(not(unix), doc = " ```ignore")]
     #[cfg_attr(unix, doc = " ```")]
-    /// # use clap::{App, arg};
+    /// # use clap::{Command, arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
     ///
-    /// let m = App::new("utf8")
+    /// let m = Command::new("utf8")
     ///     .arg(arg!(<arg> "some arg")
     ///         .allow_invalid_utf8(true))
     ///     .get_matches_from(vec![OsString::from("myprog"),
@@ -224,11 +223,11 @@ impl ArgMatches {
     ///
     #[cfg_attr(not(unix), doc = " ```ignore")]
     #[cfg_attr(unix, doc = " ```")]
-    /// # use clap::{App, arg};
+    /// # use clap::{Command, arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
     ///
-    /// let m = App::new("utf8")
+    /// let m = Command::new("utf8")
     ///     .arg(arg!(<arg> "some arg")
     ///         .allow_invalid_utf8(true))
     ///     .get_matches_from(vec![OsString::from("myprog"),
@@ -264,8 +263,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myprog")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myprog")
     ///     .arg(Arg::new("output")
     ///         .multiple_occurrences(true)
     ///         .short('o')
@@ -326,11 +325,11 @@ impl ArgMatches {
     ///
     #[cfg_attr(not(unix), doc = " ```ignore")]
     #[cfg_attr(unix, doc = " ```")]
-    /// # use clap::{App, arg};
+    /// # use clap::{Command, arg};
     /// use std::ffi::OsString;
     /// use std::os::unix::ffi::OsStringExt;
     ///
-    /// let m = App::new("utf8")
+    /// let m = Command::new("utf8")
     ///     .arg(arg!(<arg> ... "some arg")
     ///         .allow_invalid_utf8(true))
     ///     .get_matches_from(vec![OsString::from("myprog"),
@@ -375,11 +374,11 @@ impl ArgMatches {
     ///
     #[cfg_attr(not(unix), doc = " ```ignore")]
     #[cfg_attr(unix, doc = " ```")]
-    /// # use clap::{App, arg};
+    /// # use clap::{Command, arg};
     /// use std::ffi::{OsStr,OsString};
     /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
     ///
-    /// let m = App::new("utf8")
+    /// let m = Command::new("utf8")
     ///     .arg(arg!(<arg> ... "some arg")
     ///         .allow_invalid_utf8(true))
     ///     .get_matches_from(vec![OsString::from("myprog"),
@@ -431,8 +430,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```
-    /// # use clap::{App, arg};
-    /// let matches = App::new("myapp")
+    /// # use clap::{Command, arg};
+    /// let matches = Command::new("myapp")
     ///               .arg(arg!([length] "Set the length to use as a pos whole num i.e. 20"))
     ///               .get_matches_from(&["test", "12"]);
     ///
@@ -463,7 +462,7 @@ impl ArgMatches {
                 v, name, e
             );
 
-            Error::value_validation_without_app(name.to_string(), v.to_string(), message.into())
+            Error::value_validation(name.to_string(), v.to_string(), message.into())
         })
     }
 
@@ -481,8 +480,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```
-    /// # use clap::{App, arg};
-    /// let matches = App::new("myapp")
+    /// # use clap::{Command, arg};
+    /// let matches = Command::new("myapp")
     ///               .arg(arg!([length] "Set the length to use as a pos whole num i.e. 20"))
     ///               .get_matches_from(&["test", "12"]);
     ///
@@ -524,8 +523,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```
-    /// # use clap::{App, arg};
-    /// let matches = App::new("myapp")
+    /// # use clap::{Command, arg};
+    /// let matches = Command::new("myapp")
     ///               .arg(arg!([length] ... "A sequence of integers because integers are neat!"))
     ///               .get_matches_from(&["test", "12", "77", "40"]);
     ///
@@ -551,7 +550,7 @@ impl ArgMatches {
             v.parse::<R>().map_err(|e| {
                 let message = format!("The argument '{}' isn't a valid value: {}", v, e);
 
-                Error::value_validation_without_app(name.to_string(), v.to_string(), message.into())
+                Error::value_validation(name.to_string(), v.to_string(), message.into())
             })
         })
         .collect()
@@ -571,8 +570,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```
-    /// # use clap::{App, arg};
-    /// let matches = App::new("myapp")
+    /// # use clap::{Command, arg};
+    /// let matches = Command::new("myapp")
     ///               .arg(arg!([length] ... "A sequence of integers because integers are neat!"))
     ///               .get_matches_from(&["test", "12", "77", "40"]);
     ///
@@ -605,8 +604,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myprog")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myprog")
     ///     .arg(Arg::new("debug")
     ///         .short('d'))
     ///     .get_matches_from(vec![
@@ -627,6 +626,36 @@ impl ArgMatches {
         self.args.contains_key(&id)
     }
 
+    /// Report where argument value came from
+    ///
+    /// # Panics
+    ///
+    /// If `id` is is not a valid argument or group name.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use clap::{Command, Arg, ValueSource};
+    /// let m = Command::new("myprog")
+    ///     .arg(Arg::new("debug")
+    ///         .short('d'))
+    ///     .get_matches_from(vec![
+    ///         "myprog", "-d"
+    ///     ]);
+    ///
+    /// assert_eq!(m.value_source("debug"), Some(ValueSource::CommandLine));
+    /// ```
+    ///
+    /// [`default_value`]: crate::Arg::default_value()
+    /// [`occurrences_of`]: ArgMatches::occurrences_of()
+    pub fn value_source<T: Key>(&self, id: T) -> Option<ValueSource> {
+        let id = Id::from(id);
+
+        let value = self.get_arg(&id);
+
+        value.and_then(MatchedArg::source)
+    }
+
     /// The number of times an argument was used at runtime.
     ///
     /// If an argument isn't present it will return `0`.
@@ -642,8 +671,8 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myprog")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myprog")
     ///     .arg(Arg::new("debug")
     ///         .short('d')
     ///         .multiple_occurrences(true))
@@ -657,8 +686,8 @@ impl ArgMatches {
     /// This next example shows that counts actual uses of the argument, not just `-`'s
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myprog")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myprog")
     ///     .arg(Arg::new("debug")
     ///         .short('d')
     ///         .multiple_occurrences(true))
@@ -705,8 +734,8 @@ impl ArgMatches {
     /// in an `ArgMatches` struct for querying.
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("flag")
     ///         .short('f'))
     ///     .arg(Arg::new("option")
@@ -723,8 +752,8 @@ impl ArgMatches {
     /// Now notice, if we use one of the other styles of options:
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("flag")
     ///         .short('f'))
     ///     .arg(Arg::new("option")
@@ -742,8 +771,8 @@ impl ArgMatches {
     /// flags. Let's also throw in the final option style for good measure.
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("flag")
     ///         .short('f'))
     ///     .arg(Arg::new("flag2")
@@ -768,8 +797,8 @@ impl ArgMatches {
     /// One final combination of flags/options to see how they combine:
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("flag")
     ///         .short('f'))
     ///     .arg(Arg::new("flag2")
@@ -794,11 +823,11 @@ impl ArgMatches {
     /// The last part to mention is when values are sent in multiple groups with a [delimiter].
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("option")
     ///         .short('o')
-    ///         .use_delimiter(true)
+    ///         .use_value_delimiter(true)
     ///         .multiple_values(true))
     ///     .get_matches_from(vec!["myapp", "-o=val1,val2,val3"]);
     ///            // ARGV indices: ^0       ^1
@@ -835,11 +864,11 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("option")
     ///         .short('o')
-    ///         .use_delimiter(true)
+    ///         .use_value_delimiter(true)
     ///         .multiple_values(true))
     ///     .get_matches_from(vec!["myapp", "-o=val1,val2,val3"]);
     ///            // ARGV indices: ^0       ^1
@@ -853,8 +882,8 @@ impl ArgMatches {
     /// Another quick example is when flags and options are used together
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("option")
     ///         .short('o')
     ///         .takes_value(true)
@@ -876,8 +905,8 @@ impl ArgMatches {
     /// index.
     ///
     /// ```rust
-    /// # use clap::{App, Arg};
-    /// let m = App::new("myapp")
+    /// # use clap::{Command, Arg};
+    /// let m = Command::new("myapp")
     ///     .arg(Arg::new("option")
     ///         .short('o')
     ///         .takes_value(true)
@@ -910,11 +939,11 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```no_run
-    /// # use clap::{App, Arg, };
-    ///  let app_m = App::new("git")
-    ///      .subcommand(App::new("clone"))
-    ///      .subcommand(App::new("push"))
-    ///      .subcommand(App::new("commit"))
+    /// # use clap::{Command, Arg, };
+    ///  let app_m = Command::new("git")
+    ///      .subcommand(Command::new("clone"))
+    ///      .subcommand(Command::new("push"))
+    ///      .subcommand(Command::new("commit"))
     ///      .get_matches();
     ///
     /// match app_m.subcommand() {
@@ -930,10 +959,10 @@ impl ArgMatches {
     /// with pattern matching!
     ///
     /// ```rust
-    /// # use clap::{App, AppSettings};
+    /// # use clap::Command;
     /// // Assume there is an external subcommand named "subcmd"
-    /// let app_m = App::new("myprog")
-    ///     .setting(AppSettings::AllowExternalSubcommands)
+    /// let app_m = Command::new("myprog")
+    ///     .allow_external_subcommands(true)
     ///     .get_matches_from(vec![
     ///         "myprog", "subcmd", "--option", "value", "-fff", "--flag"
     ///     ]);
@@ -949,7 +978,7 @@ impl ArgMatches {
     ///     _ => {},
     /// }
     /// ```
-    /// [subcommand]: crate::App::subcommand
+    /// [subcommand]: crate::Command::subcommand
     #[inline]
     pub fn subcommand(&self) -> Option<(&str, &ArgMatches)> {
         self.subcommand.as_ref().map(|sc| (&*sc.name, &sc.matches))
@@ -968,11 +997,11 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```rust
-    /// # use clap::{App, Arg, };
-    /// let app_m = App::new("myprog")
+    /// # use clap::{Command, Arg, };
+    /// let app_m = Command::new("myprog")
     ///     .arg(Arg::new("debug")
     ///         .short('d'))
-    ///     .subcommand(App::new("test")
+    ///     .subcommand(Command::new("test")
     ///         .arg(Arg::new("opt")
     ///             .long("option")
     ///             .takes_value(true)))
@@ -990,8 +1019,8 @@ impl ArgMatches {
     /// }
     /// ```
     ///
-    /// [subcommand]: crate::App::subcommand
-    /// [`App`]: crate::App
+    /// [subcommand]: crate::Command::subcommand
+    /// [`Command`]: crate::Command
     pub fn subcommand_matches<T: Key>(&self, id: T) -> Option<&ArgMatches> {
         self.get_subcommand(&id.into()).map(|sc| &sc.matches)
     }
@@ -1003,11 +1032,11 @@ impl ArgMatches {
     /// # Examples
     ///
     /// ```no_run
-    /// # use clap::{App, Arg, };
-    ///  let app_m = App::new("git")
-    ///      .subcommand(App::new("clone"))
-    ///      .subcommand(App::new("push"))
-    ///      .subcommand(App::new("commit"))
+    /// # use clap::{Command, Arg, };
+    ///  let app_m = Command::new("git")
+    ///      .subcommand(Command::new("clone"))
+    ///      .subcommand(Command::new("push"))
+    ///      .subcommand(Command::new("commit"))
     ///      .get_matches();
     ///
     /// match app_m.subcommand_name() {
@@ -1017,8 +1046,8 @@ impl ArgMatches {
     ///     _              => {}, // Either no subcommand or one not tested for...
     /// }
     /// ```
-    /// [subcommand]: crate::App::subcommand
-    /// [`App`]: crate::App
+    /// [subcommand]: crate::Command::subcommand
+    /// [`Command`]: crate::Command
     #[inline]
     pub fn subcommand_name(&self) -> Option<&str> {
         self.subcommand.as_ref().map(|sc| &*sc.name)
@@ -1135,8 +1164,8 @@ pub(crate) struct SubCommand {
 /// # Examples
 ///
 /// ```rust
-/// # use clap::{App, Arg};
-/// let m = App::new("myapp")
+/// # use clap::{Command, Arg};
+/// let m = Command::new("myapp")
 ///     .arg(Arg::new("output")
 ///         .short('o')
 ///         .multiple_occurrences(true)
@@ -1232,11 +1261,11 @@ impl<'a> Default for GroupedValues<'a> {
 ///
 #[cfg_attr(not(unix), doc = " ```ignore")]
 #[cfg_attr(unix, doc = " ```")]
-/// # use clap::{App, arg};
+/// # use clap::{Command, arg};
 /// use std::ffi::OsString;
 /// use std::os::unix::ffi::{OsStrExt,OsStringExt};
 ///
-/// let m = App::new("utf8")
+/// let m = Command::new("utf8")
 ///     .arg(arg!(<arg> "some arg")
 ///         .allow_invalid_utf8(true))
 ///     .get_matches_from(vec![OsString::from("myprog"),
@@ -1288,8 +1317,8 @@ impl Default for OsValues<'_> {
 /// # Examples
 ///
 /// ```rust
-/// # use clap::{App, Arg};
-/// let m = App::new("myapp")
+/// # use clap::{Command, Arg};
+/// let m = Command::new("myapp")
 ///     .arg(Arg::new("output")
 ///         .short('o')
 ///         .multiple_values(true)
@@ -1406,7 +1435,7 @@ mod tests {
 
     #[test]
     fn values_exact_size() {
-        let l = crate::App::new("test")
+        let l = crate::Command::new("test")
             .arg(
                 crate::Arg::new("POTATO")
                     .takes_value(true)
@@ -1423,7 +1452,7 @@ mod tests {
 
     #[test]
     fn os_values_exact_size() {
-        let l = crate::App::new("test")
+        let l = crate::Command::new("test")
             .arg(
                 crate::Arg::new("POTATO")
                     .takes_value(true)
@@ -1441,7 +1470,7 @@ mod tests {
 
     #[test]
     fn indices_exact_size() {
-        let l = crate::App::new("test")
+        let l = crate::Command::new("test")
             .arg(
                 crate::Arg::new("POTATO")
                     .takes_value(true)
