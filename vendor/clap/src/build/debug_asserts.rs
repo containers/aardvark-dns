@@ -1,59 +1,57 @@
-use crate::{
-    build::arg::{debug_asserts::assert_arg, ArgProvider},
-    mkeymap::KeyType,
-    util::Id,
-    App, AppSettings, Arg, ArgSettings, ValueHint,
-};
 use std::cmp::Ordering;
 
-pub(crate) fn assert_app(app: &App) {
-    debug!("App::_debug_asserts");
+use crate::build::arg::ArgProvider;
+use crate::mkeymap::KeyType;
+use crate::util::Id;
+use crate::{AppSettings, Arg, Command, ValueHint};
+
+pub(crate) fn assert_app(cmd: &Command) {
+    debug!("Command::_debug_asserts");
 
     let mut short_flags = vec![];
     let mut long_flags = vec![];
 
     // Invalid version flag settings
-    if app.version.is_none() && app.long_version.is_none() {
+    if cmd.get_version().is_none() && cmd.get_long_version().is_none() {
         // PropagateVersion is meaningless if there is no version
         assert!(
-            !app.settings.is_set(AppSettings::PropagateVersion),
-            "App {}: No version information via App::version or App::long_version to propagate",
-            app.get_name(),
+            !cmd.is_propagate_version_set(),
+            "Command {}: No version information via Command::version or Command::long_version to propagate",
+            cmd.get_name(),
         );
 
-        // Used `App::mut_arg("version", ..) but did not provide any version information to display
-        let has_mutated_version = app
-            .args
-            .args()
+        // Used `Command::mut_arg("version", ..) but did not provide any version information to display
+        let has_mutated_version = cmd
+            .get_arguments()
             .any(|x| x.id == Id::version_hash() && x.provider == ArgProvider::GeneratedMutated);
 
         if has_mutated_version {
-            assert!(app.settings.is_set(AppSettings::NoAutoVersion),
-                "App {}: Used App::mut_arg(\"version\", ..) without providing App::version, App::long_version or using AppSettings::NoAutoVersion"
-            ,app.get_name()
+            assert!(cmd.is_set(AppSettings::NoAutoVersion),
+                "Command {}: Used Command::mut_arg(\"version\", ..) without providing Command::version, Command::long_version or using AppSettings::NoAutoVersion"
+            ,cmd.get_name()
                 );
         }
     }
 
-    for sc in &app.subcommands {
-        if let Some(s) = sc.short_flag.as_ref() {
-            short_flags.push(Flag::App(format!("-{}", s), &sc.name));
+    for sc in cmd.get_subcommands() {
+        if let Some(s) = sc.get_short_flag().as_ref() {
+            short_flags.push(Flag::Command(format!("-{}", s), sc.get_name()));
         }
 
-        for (short_alias, _) in &sc.short_flag_aliases {
-            short_flags.push(Flag::App(format!("-{}", short_alias), &sc.name));
+        for short_alias in sc.get_all_short_flag_aliases() {
+            short_flags.push(Flag::Command(format!("-{}", short_alias), sc.get_name()));
         }
 
-        if let Some(l) = sc.long_flag.as_ref() {
-            long_flags.push(Flag::App(format!("--{}", l), &sc.name));
+        if let Some(l) = sc.get_long_flag().as_ref() {
+            long_flags.push(Flag::Command(format!("--{}", l), sc.get_name()));
         }
 
-        for (long_alias, _) in &sc.long_flag_aliases {
-            long_flags.push(Flag::App(format!("--{}", long_alias), &sc.name));
+        for long_alias in sc.get_all_long_flag_aliases() {
+            long_flags.push(Flag::Command(format!("--{}", long_alias), sc.get_name()));
         }
     }
 
-    for arg in app.args.args() {
+    for arg in cmd.get_arguments() {
         assert_arg(arg);
 
         if let Some(s) = arg.short.as_ref() {
@@ -74,19 +72,19 @@ pub(crate) fn assert_app(app: &App) {
 
         // Name conflicts
         assert!(
-            app.two_args_of(|x| x.id == arg.id).is_none(),
-            "App {}: Argument names must be unique, but '{}' is in use by more than one argument or group",
-            app.get_name(),
+            cmd.two_args_of(|x| x.id == arg.id).is_none(),
+            "Command {}: Argument names must be unique, but '{}' is in use by more than one argument or group",
+            cmd.get_name(),
             arg.name,
         );
 
         // Long conflicts
         if let Some(l) = arg.long {
-            if let Some((first, second)) = app.two_args_of(|x| x.long == Some(l)) {
+            if let Some((first, second)) = cmd.two_args_of(|x| x.long == Some(l)) {
                 panic!(
-                    "App {}: Long option names must be unique for each argument, \
+                    "Command {}: Long option names must be unique for each argument, \
                         but '--{}' is in use by both '{}' and '{}'",
-                    app.get_name(),
+                    cmd.get_name(),
                     l,
                     first.name,
                     second.name
@@ -96,11 +94,11 @@ pub(crate) fn assert_app(app: &App) {
 
         // Short conflicts
         if let Some(s) = arg.short {
-            if let Some((first, second)) = app.two_args_of(|x| x.short == Some(s)) {
+            if let Some((first, second)) = cmd.two_args_of(|x| x.short == Some(s)) {
                 panic!(
-                    "App {}: Short option names must be unique for each argument, \
+                    "Command {}: Short option names must be unique for each argument, \
                         but '-{}' is in use by both '{}' and '{}'",
-                    app.get_name(),
+                    cmd.get_name(),
                     s,
                     first.name,
                     second.name
@@ -111,14 +109,14 @@ pub(crate) fn assert_app(app: &App) {
         // Index conflicts
         if let Some(idx) = arg.index {
             if let Some((first, second)) =
-                app.two_args_of(|x| x.is_positional() && x.index == Some(idx))
+                cmd.two_args_of(|x| x.is_positional() && x.index == Some(idx))
             {
                 panic!(
-                    "App {}: Argument '{}' has the same index as '{}' \
+                    "Command {}: Argument '{}' has the same index as '{}' \
                     and they are both positional arguments\n\n\t \
                     Use Arg::multiple_values(true) to allow one \
                     positional argument to take multiple values",
-                    app.get_name(),
+                    cmd.get_name(),
                     first.name,
                     second.name
                 )
@@ -128,9 +126,9 @@ pub(crate) fn assert_app(app: &App) {
         // requires, r_if, r_unless
         for req in &arg.requires {
             assert!(
-                app.id_exists(&req.1),
-                "App {}: Argument or group '{:?}' specified in 'requires*' for '{}' does not exist",
-                app.get_name(),
+                cmd.id_exists(&req.1),
+                "Command {}: Argument or group '{:?}' specified in 'requires*' for '{}' does not exist",
+                cmd.get_name(),
                 req.1,
                 arg.name,
             );
@@ -138,9 +136,9 @@ pub(crate) fn assert_app(app: &App) {
 
         for req in &arg.r_ifs {
             assert!(
-                app.id_exists(&req.0),
-                "App {}: Argument or group '{:?}' specified in 'required_if_eq*' for '{}' does not exist",
-                    app.get_name(),
+                cmd.id_exists(&req.0),
+                "Command {}: Argument or group '{:?}' specified in 'required_if_eq*' for '{}' does not exist",
+                    cmd.get_name(),
                 req.0,
                 arg.name
             );
@@ -148,9 +146,9 @@ pub(crate) fn assert_app(app: &App) {
 
         for req in &arg.r_ifs_all {
             assert!(
-                app.id_exists(&req.0),
-                "App {}: Argument or group '{:?}' specified in 'required_if_eq_all' for '{}' does not exist",
-                    app.get_name(),
+                cmd.id_exists(&req.0),
+                "Command {}: Argument or group '{:?}' specified in 'required_if_eq_all' for '{}' does not exist",
+                    cmd.get_name(),
                 req.0,
                 arg.name
             );
@@ -158,9 +156,9 @@ pub(crate) fn assert_app(app: &App) {
 
         for req in &arg.r_unless {
             assert!(
-                app.id_exists(req),
-                "App {}: Argument or group '{:?}' specified in 'required_unless*' for '{}' does not exist",
-                    app.get_name(),
+                cmd.id_exists(req),
+                "Command {}: Argument or group '{:?}' specified in 'required_unless*' for '{}' does not exist",
+                    cmd.get_name(),
                 req,
                 arg.name,
             );
@@ -169,75 +167,75 @@ pub(crate) fn assert_app(app: &App) {
         // blacklist
         for req in &arg.blacklist {
             assert!(
-                app.id_exists(req),
-                "App {}: Argument or group '{:?}' specified in 'conflicts_with*' for '{}' does not exist",
-                    app.get_name(),
+                cmd.id_exists(req),
+                "Command {}: Argument or group '{:?}' specified in 'conflicts_with*' for '{}' does not exist",
+                    cmd.get_name(),
                 req,
                 arg.name,
             );
         }
 
-        if arg.is_set(ArgSettings::Last) {
+        if arg.is_last_set() {
             assert!(
                 arg.long.is_none(),
-                "App {}: Flags or Options cannot have last(true) set. '{}' has both a long and last(true) set.",
-                    app.get_name(),
+                "Command {}: Flags or Options cannot have last(true) set. '{}' has both a long and last(true) set.",
+                    cmd.get_name(),
                 arg.name
             );
             assert!(
                 arg.short.is_none(),
-                "App {}: Flags or Options cannot have last(true) set. '{}' has both a short and last(true) set.",
-                    app.get_name(),
+                "Command {}: Flags or Options cannot have last(true) set. '{}' has both a short and last(true) set.",
+                    cmd.get_name(),
                 arg.name
             );
         }
 
         assert!(
-            !(arg.is_set(ArgSettings::Required) && arg.get_global()),
-            "App {}: Global arguments cannot be required.\n\n\t'{}' is marked as both global and required",
-                    app.get_name(),
+            !(arg.is_required_set() && arg.is_global_set()),
+            "Command {}: Global arguments cannot be required.\n\n\t'{}' is marked as both global and required",
+                    cmd.get_name(),
             arg.name
         );
 
         // validators
         assert!(
             arg.validator.is_none() || arg.validator_os.is_none(),
-            "App {}: Argument '{}' has both `validator` and `validator_os` set which is not allowed",
-                    app.get_name(),
+            "Command {}: Argument '{}' has both `validator` and `validator_os` set which is not allowed",
+                    cmd.get_name(),
             arg.name
         );
 
         if arg.value_hint == ValueHint::CommandWithArguments {
             assert!(
                 arg.is_positional(),
-                "App {}: Argument '{}' has hint CommandWithArguments and must be positional.",
-                app.get_name(),
+                "Command {}: Argument '{}' has hint CommandWithArguments and must be positional.",
+                cmd.get_name(),
                 arg.name
             );
 
             assert!(
-                app.is_set(AppSettings::TrailingVarArg),
-                "App {}: Positional argument '{}' has hint CommandWithArguments, so App must have TrailingVarArg set.",
-                    app.get_name(),
+                cmd.is_trailing_var_arg_set(),
+                "Command {}: Positional argument '{}' has hint CommandWithArguments, so Command must have TrailingVarArg set.",
+                    cmd.get_name(),
                 arg.name
             );
         }
     }
 
-    for group in &app.groups {
+    for group in cmd.get_groups() {
         // Name conflicts
         assert!(
-            app.groups.iter().filter(|x| x.id == group.id).count() < 2,
-            "App {}: Argument group name must be unique\n\n\t'{}' is already in use",
-            app.get_name(),
+            cmd.get_groups().filter(|x| x.id == group.id).count() < 2,
+            "Command {}: Argument group name must be unique\n\n\t'{}' is already in use",
+            cmd.get_name(),
             group.name,
         );
 
         // Groups should not have naming conflicts with Args
         assert!(
-            !app.args.args().any(|x| x.id == group.id),
-            "App {}: Argument group name '{}' must not conflict with argument name",
-            app.get_name(),
+            !cmd.get_arguments().any(|x| x.id == group.id),
+            "Command {}: Argument group name '{}' must not conflict with argument name",
+            cmd.get_name(),
             group.name,
         );
 
@@ -245,12 +243,11 @@ pub(crate) fn assert_app(app: &App) {
         if group.required && !group.args.is_empty() {
             assert!(
                 group.args.iter().any(|arg| {
-                    app.args
-                        .args()
+                    cmd.get_arguments()
                         .any(|x| x.id == *arg && x.default_vals.is_empty())
                 }),
-                "App {}: Argument group '{}' is required but all of it's arguments have a default value.",
-                    app.get_name(),
+                "Command {}: Argument group '{}' is required but all of it's arguments have a default value.",
+                    cmd.get_name(),
                 group.name
             )
         }
@@ -258,9 +255,9 @@ pub(crate) fn assert_app(app: &App) {
         for arg in &group.args {
             // Args listed inside groups should exist
             assert!(
-                app.args.args().any(|x| x.id == *arg),
-                "App {}: Argument group '{}' contains non-existent argument '{:?}'",
-                app.get_name(),
+                cmd.get_arguments().any(|x| x.id == *arg),
+                "Command {}: Argument group '{}' contains non-existent argument '{:?}'",
+                cmd.get_name(),
                 group.name,
                 arg
             );
@@ -275,30 +272,30 @@ pub(crate) fn assert_app(app: &App) {
     detect_duplicate_flags(&long_flags, "long");
     detect_duplicate_flags(&short_flags, "short");
 
-    _verify_positionals(app);
+    _verify_positionals(cmd);
 
-    if let Some(help_template) = app.template {
+    if let Some(help_template) = cmd.get_help_template() {
         assert!(
             !help_template.contains("{flags}"),
-            "App {}: {}",
-                    app.get_name(),
+            "Command {}: {}",
+                    cmd.get_name(),
             "`{flags}` template variable was removed in clap3, they are now included in `{options}`",
         );
         assert!(
             !help_template.contains("{unified}"),
-            "App {}: {}",
-            app.get_name(),
+            "Command {}: {}",
+            cmd.get_name(),
             "`{unified}` template variable was removed in clap3, use `{options}` instead"
         );
     }
 
-    app._panic_on_missing_help(app.g_settings.is_set(AppSettings::HelpExpected));
-    assert_app_flags(app);
+    cmd._panic_on_missing_help(cmd.is_help_expected_set());
+    assert_app_flags(cmd);
 }
 
 #[derive(Eq)]
 enum Flag<'a> {
-    App(String, &'a str),
+    Command(String, &'a str),
     Arg(String, &'a str),
 }
 
@@ -313,10 +310,10 @@ impl PartialOrd for Flag<'_> {
         use Flag::*;
 
         match (self, other) {
-            (App(s1, _), App(s2, _))
+            (Command(s1, _), Command(s2, _))
             | (Arg(s1, _), Arg(s2, _))
-            | (App(s1, _), Arg(s2, _))
-            | (Arg(s1, _), App(s2, _)) => {
+            | (Command(s1, _), Arg(s2, _))
+            | (Arg(s1, _), Command(s2, _)) => {
                 if s1 == s2 {
                     Some(Ordering::Equal)
                 } else {
@@ -338,7 +335,7 @@ fn detect_duplicate_flags(flags: &[Flag], short_or_long: &str) {
 
     for (one, two) in find_duplicates(flags) {
         match (one, two) {
-            (App(flag, one), App(_, another)) if one != another => panic!(
+            (Command(flag, one), Command(_, another)) if one != another => panic!(
                 "the '{}' {} flag is specified for both '{}' and '{}' subcommands",
                 flag, short_or_long, one, another
             ),
@@ -348,7 +345,7 @@ fn detect_duplicate_flags(flags: &[Flag], short_or_long: &str) {
                 short_or_long, flag, one, another
             ),
 
-            (Arg(flag, arg), App(_, sub)) | (App(flag, sub), Arg(_, arg)) => panic!(
+            (Arg(flag, arg), Command(_, sub)) | (Command(flag, sub), Arg(_, arg)) => panic!(
                 "the '{}' {} flag for the '{}' argument conflicts with the short flag \
                      for '{}' subcommand",
                 flag, short_or_long, arg, sub
@@ -373,16 +370,14 @@ fn find_duplicates<T: PartialEq>(slice: &[T]) -> impl Iterator<Item = (&T, &T)> 
     })
 }
 
-fn assert_app_flags(app: &App) {
-    use AppSettings::*;
-
+fn assert_app_flags(cmd: &Command) {
     macro_rules! checker {
         ($a:ident requires $($b:ident)|+) => {
-            if app.is_set($a) {
+            if cmd.$a() {
                 let mut s = String::new();
 
                 $(
-                    if !app.is_set($b) {
+                    if !cmd.$b() {
                         s.push_str(&format!("  AppSettings::{} is required when AppSettings::{} is set.\n", std::stringify!($b), std::stringify!($a)));
                     }
                 )+
@@ -393,30 +388,30 @@ fn assert_app_flags(app: &App) {
             }
         };
         ($a:ident conflicts $($b:ident)|+) => {
-            if app.is_set($a) {
+            if cmd.$a() {
                 let mut s = String::new();
 
                 $(
-                    if app.is_set($b) {
+                    if cmd.$b() {
                         s.push_str(&format!("  AppSettings::{} conflicts with AppSettings::{}.\n", std::stringify!($b), std::stringify!($a)));
                     }
                 )+
 
                 if !s.is_empty() {
-                    panic!("{}\n{}", app.get_name(), s)
+                    panic!("{}\n{}", cmd.get_name(), s)
                 }
             }
         };
     }
 
-    checker!(AllowInvalidUtf8ForExternalSubcommands requires AllowExternalSubcommands);
+    checker!(is_allow_invalid_utf8_for_external_subcommands_set requires is_allow_external_subcommands_set);
     #[cfg(feature = "unstable-multicall")]
-    checker!(Multicall conflicts NoBinaryName);
+    checker!(is_multicall_set conflicts is_no_binary_name_set);
 }
 
 #[cfg(debug_assertions)]
-fn _verify_positionals(app: &App) -> bool {
-    debug!("App::_verify_positionals");
+fn _verify_positionals(cmd: &Command) -> bool {
+    debug!("Command::_verify_positionals");
     // Because you must wait until all arguments have been supplied, this is the first chance
     // to make assertions on positional argument indexes
     //
@@ -424,8 +419,8 @@ fn _verify_positionals(app: &App) -> bool {
     // positional arguments to verify there are no gaps (i.e. supplying an index of 1 and 3
     // but no 2)
 
-    let highest_idx = app
-        .args
+    let highest_idx = cmd
+        .get_keymap()
         .keys()
         .filter_map(|x| {
             if let KeyType::Position(n) = x {
@@ -437,7 +432,7 @@ fn _verify_positionals(app: &App) -> bool {
         .max()
         .unwrap_or(0);
 
-    let num_p = app.args.keys().filter(|x| x.is_position()).count();
+    let num_p = cmd.get_keymap().keys().filter(|x| x.is_position()).count();
 
     assert!(
         highest_idx == num_p,
@@ -449,7 +444,7 @@ fn _verify_positionals(app: &App) -> bool {
 
     // Next we verify that only the highest index has takes multiple arguments (if any)
     let only_highest = |a: &Arg| a.is_multiple() && (a.index.unwrap_or(0) != highest_idx);
-    if app.get_positionals().any(only_highest) {
+    if cmd.get_positionals().any(only_highest) {
         // First we make sure if there is a positional that allows multiple values
         // the one before it (second to last) has one of these:
         //  * a value terminator
@@ -458,14 +453,14 @@ fn _verify_positionals(app: &App) -> bool {
 
         // We can't pass the closure (it.next()) to the macro directly because each call to
         // find() (iterator, not macro) gets called repeatedly.
-        let last = &app.args[&KeyType::Position(highest_idx)];
-        let second_to_last = &app.args[&KeyType::Position(highest_idx - 1)];
+        let last = &cmd.get_keymap()[&KeyType::Position(highest_idx)];
+        let second_to_last = &cmd.get_keymap()[&KeyType::Position(highest_idx - 1)];
 
         // Either the final positional is required
         // Or the second to last has a terminator or .last(true) set
-        let ok = last.is_set(ArgSettings::Required)
-            || (second_to_last.terminator.is_some() || second_to_last.is_set(ArgSettings::Last))
-            || last.is_set(ArgSettings::Last);
+        let ok = last.is_required_set()
+            || (second_to_last.terminator.is_some() || second_to_last.is_last_set())
+            || last.is_last_set();
         assert!(
             ok,
             "When using a positional argument with .multiple_values(true) that is *not the \
@@ -474,7 +469,7 @@ fn _verify_positionals(app: &App) -> bool {
         );
 
         // We make sure if the second to last is Multiple the last is ArgSettings::Last
-        let ok = second_to_last.is_multiple() || last.is_set(ArgSettings::Last);
+        let ok = second_to_last.is_multiple() || last.is_last_set();
         assert!(
             ok,
             "Only the last positional argument, or second to last positional \
@@ -482,15 +477,15 @@ fn _verify_positionals(app: &App) -> bool {
         );
 
         // Next we check how many have both Multiple and not a specific number of values set
-        let count = app
+        let count = cmd
             .get_positionals()
             .filter(|p| {
-                p.settings.is_set(ArgSettings::MultipleOccurrences)
-                    || (p.settings.is_set(ArgSettings::MultipleValues) && p.num_vals.is_none())
+                p.is_multiple_occurrences_set()
+                    || (p.is_multiple_values_set() && p.num_vals.is_none())
             })
             .count();
         let ok = count <= 1
-            || (last.is_set(ArgSettings::Last)
+            || (last.is_last_set()
                 && last.is_multiple()
                 && second_to_last.is_multiple()
                 && count == 2);
@@ -503,22 +498,22 @@ fn _verify_positionals(app: &App) -> bool {
 
     let mut found = false;
 
-    if app.is_set(AppSettings::AllowMissingPositional) {
+    if cmd.is_allow_missing_positional_set() {
         // Check that if a required positional argument is found, all positions with a lower
         // index are also required.
         let mut foundx2 = false;
 
-        for p in app.get_positionals() {
-            if foundx2 && !p.is_set(ArgSettings::Required) {
+        for p in cmd.get_positionals() {
+            if foundx2 && !p.is_required_set() {
                 assert!(
-                    p.is_set(ArgSettings::Required),
+                    p.is_required_set(),
                     "Found non-required positional argument with a lower \
                          index than a required positional argument by two or more: {:?} \
                          index {:?}",
                     p.name,
                     p.index
                 );
-            } else if p.is_set(ArgSettings::Required) && !p.is_set(ArgSettings::Last) {
+            } else if p.is_required_set() && !p.is_last_set() {
                 // Args that .last(true) don't count since they can be required and have
                 // positionals with a lower index that aren't required
                 // Imagine: prog <req1> [opt1] -- <req2>
@@ -538,16 +533,16 @@ fn _verify_positionals(app: &App) -> bool {
     } else {
         // Check that if a required positional argument is found, all positions with a lower
         // index are also required
-        for p in (1..=num_p).rev().filter_map(|n| app.args.get(&n)) {
+        for p in (1..=num_p).rev().filter_map(|n| cmd.get_keymap().get(&n)) {
             if found {
                 assert!(
-                    p.is_set(ArgSettings::Required),
+                    p.is_required_set(),
                     "Found non-required positional argument with a lower \
                          index than a required positional argument: {:?} index {:?}",
                     p.name,
                     p.index
                 );
-            } else if p.is_set(ArgSettings::Required) && !p.is_set(ArgSettings::Last) {
+            } else if p.is_required_set() && !p.is_last_set() {
                 // Args that .last(true) don't count since they can be required and have
                 // positionals with a lower index that aren't required
                 // Imagine: prog <req1> [opt1] -- <req2>
@@ -560,17 +555,14 @@ fn _verify_positionals(app: &App) -> bool {
         }
     }
     assert!(
-        app.get_positionals()
-            .filter(|p| p.is_set(ArgSettings::Last))
-            .count()
-            < 2,
+        cmd.get_positionals().filter(|p| p.is_last_set()).count() < 2,
         "Only one positional argument may have last(true) set. Found two."
     );
-    if app
+    if cmd
         .get_positionals()
-        .any(|p| p.is_set(ArgSettings::Last) && p.is_set(ArgSettings::Required))
-        && app.has_subcommands()
-        && !app.is_set(AppSettings::SubcommandsNegateReqs)
+        .any(|p| p.is_last_set() && p.is_required_set())
+        && cmd.has_subcommands()
+        && !cmd.is_subcommand_negates_reqs_set()
     {
         panic!(
             "Having a required positional argument with .last(true) set *and* child \
@@ -579,4 +571,138 @@ fn _verify_positionals(app: &App) -> bool {
     }
 
     true
+}
+
+fn assert_arg(arg: &Arg) {
+    debug!("Arg::_debug_asserts:{}", arg.name);
+
+    // Self conflict
+    // TODO: this check should be recursive
+    assert!(
+        !arg.blacklist.iter().any(|x| *x == arg.id),
+        "Argument '{}' cannot conflict with itself",
+        arg.name,
+    );
+
+    if arg.value_hint != ValueHint::Unknown {
+        assert!(
+            arg.is_takes_value_set(),
+            "Argument '{}' has value hint but takes no value",
+            arg.name
+        );
+
+        if arg.value_hint == ValueHint::CommandWithArguments {
+            assert!(
+                arg.is_multiple_values_set(),
+                "Argument '{}' uses hint CommandWithArguments and must accept multiple values",
+                arg.name
+            )
+        }
+    }
+
+    if arg.index.is_some() {
+        assert!(
+            arg.is_positional(),
+            "Argument '{}' is a positional argument and can't have short or long name versions",
+            arg.name
+        );
+    }
+
+    if arg.is_required_set() {
+        assert!(
+            arg.default_vals.is_empty(),
+            "Argument '{}' is required and can't have a default value",
+            arg.name
+        );
+    }
+
+    assert_arg_flags(arg);
+
+    assert_defaults(arg, "default_value", arg.default_vals.iter().copied());
+    assert_defaults(
+        arg,
+        "default_missing_value",
+        arg.default_missing_vals.iter().copied(),
+    );
+    assert_defaults(
+        arg,
+        "default_value_if",
+        arg.default_vals_ifs
+            .iter()
+            .filter_map(|(_, _, default)| *default),
+    );
+}
+
+fn assert_arg_flags(arg: &Arg) {
+    macro_rules! checker {
+        ($a:ident requires $($b:ident)|+) => {
+            if arg.$a() {
+                let mut s = String::new();
+
+                $(
+                    if !arg.$b() {
+                        s.push_str(&format!("  Arg::{} is required when Arg::{} is set.\n", std::stringify!($b), std::stringify!($a)));
+                    }
+                )+
+
+                if !s.is_empty() {
+                    panic!("Argument {:?}\n{}", arg.get_id(), s)
+                }
+            }
+        }
+    }
+
+    checker!(is_forbid_empty_values_set requires is_takes_value_set);
+    checker!(is_require_value_delimiter_set requires is_takes_value_set);
+    checker!(is_require_value_delimiter_set requires is_use_value_delimiter_set);
+    checker!(is_hide_possible_values_set requires is_takes_value_set);
+    checker!(is_allow_hyphen_values_set requires is_takes_value_set);
+    checker!(is_require_equals_set requires is_takes_value_set);
+    checker!(is_last_set requires is_takes_value_set);
+    checker!(is_hide_default_value_set requires is_takes_value_set);
+    checker!(is_multiple_values_set requires is_takes_value_set);
+    checker!(is_ignore_case_set requires is_takes_value_set);
+    checker!(is_allow_invalid_utf8_set requires is_takes_value_set);
+}
+
+fn assert_defaults<'d>(
+    arg: &Arg,
+    field: &'static str,
+    defaults: impl IntoIterator<Item = &'d std::ffi::OsStr>,
+) {
+    for default_os in defaults {
+        if let Some(default_s) = default_os.to_str() {
+            if !arg.possible_vals.is_empty() {
+                assert!(
+                    arg.possible_vals.iter().any(|possible_val| {
+                        possible_val.matches(default_s, arg.is_ignore_case_set())
+                    }),
+                    "Argument `{}`'s {}={} doesn't match possible values",
+                    arg.name,
+                    field,
+                    default_s
+                );
+            }
+
+            if let Some(validator) = arg.validator.as_ref() {
+                let mut validator = validator.lock().unwrap();
+                if let Err(err) = validator(default_s) {
+                    panic!(
+                        "Argument `{}`'s {}={} failed validation: {}",
+                        arg.name, field, default_s, err
+                    );
+                }
+            }
+        }
+
+        if let Some(validator) = arg.validator_os.as_ref() {
+            let mut validator = validator.lock().unwrap();
+            if let Err(err) = validator(default_os) {
+                panic!(
+                    "Argument `{}`'s {}={:?} failed validation: {}",
+                    arg.name, field, default_os, err
+                );
+            }
+        }
+    }
 }

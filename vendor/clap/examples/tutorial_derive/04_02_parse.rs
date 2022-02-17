@@ -13,9 +13,3 @@ fn main() {
 
     println!("PORT = {}", cli.port);
 }
-
-#[test]
-fn verify_app() {
-    use clap::CommandFactory;
-    Cli::command().debug_assert()
-}

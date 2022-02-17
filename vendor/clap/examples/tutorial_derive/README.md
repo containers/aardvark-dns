@@ -66,7 +66,7 @@ In addition to this tutorial, see the [derive reference](../derive_ref/README.md
 
 ## Configuring the Parser
 
-You use the `App` the start building a parser.
+You use the `Command` the start building a parser.
 
 [Example:](02_apps.rs)
 ```console
@@ -89,7 +89,7 @@ MyApp 1.0
 
 ```
 
-You can use `app_from_crate!()` to fill these fields in from your `Cargo.toml` file.
+You can use `command!()` to fill these fields in from your `Cargo.toml` file.
 
 [Example:](02_crate.rs)
 ```console
@@ -111,9 +111,7 @@ clap [..]
 
 ```
 
-You can use `AppSettings` to change the application level behavior of clap. You
-can apply the setting to the top level command (`app.setting()`) or to it and
-all subcommands (`app.global_setting()`).
+You can use `Command` methods to change the application level behavior of clap.
 
 [Example:](02_app_settings.rs)
 ```console
@@ -268,7 +266,7 @@ name: Some("bob")
 
 ### Subcommands
 
-Subcommands are defined as `App`s that get added via `App::subcommand`. Each
+Subcommands are defined as `Command`s that get added via `Command::subcommand`. Each
 instance of a Subcommand can have its own version, author(s), Args, and even its own
 subcommands.
 
@@ -328,7 +326,7 @@ SUBCOMMANDS:
 
 ```
 
-Because we set `AppSettings::PropagateVersion`:
+Because we set `Command::propagate_version`:
 ```console
 $ 03_04_subcommands_derive --version
 clap [..]
@@ -417,6 +415,37 @@ For more information try --help
 
 More generally, you can validate and parse into any data type.
 
+More generally, you can parse into any data type.
+
+[Example:](04_02_parse.rs)
+```console
+$ 04_02_parse_derive --help
+clap [..]
+A simple to use, efficient, and full-featured Command Line Argument Parser
+
+USAGE:
+    04_02_parse_derive[EXE] <PORT>
+
+ARGS:
+    <PORT>    Network port to use
+
+OPTIONS:
+    -h, --help       Print help information
+    -V, --version    Print version information
+
+$ 04_02_parse_derive 22
+PORT = 22
+
+$ 04_02_parse_derive foobar
+? failed
+error: Invalid value "foobar" for '<PORT>': invalid digit found in string
+
+For more information try --help
+
+```
+
+A custom validator can be used to improve the error messages or provide additional validation:
+
 [Example:](04_02_validate.rs)
 ```console
 $ 04_02_validate_derive --help
@@ -436,9 +465,9 @@ OPTIONS:
 $ 04_02_validate_derive 22
 PORT = 22
 
-$ 04_02_validate_derive foobar
+$ 04_02_validate_derive 0
 ? failed
-error: Invalid value for '<PORT>': invalid digit found in string
+error: Invalid value "0" for '<PORT>': Port not in range 1-65535
 
 For more information try --help
 
@@ -581,11 +610,12 @@ Doing work using input input.txt and config config.toml
 
 ## Tips
 
-- Proactively check for bad `App` configurations by calling `App::debug_assert` ([example](05_01_assert.rs))
+- Proactively check for bad `Command` configurations by calling `Command::debug_assert` ([example](05_01_assert.rs))
 
 ## Contributing
 
 New example code:
+- Please update the corresponding section in the [builder tutorial](../tutorial_builder/README.md)
 - Building: They must be added to [Cargo.toml](../../Cargo.toml) with the appropriate `required-features`.
 - Testing: Ensure there is a markdown file with [trycmd](https://docs.rs/trycmd) syntax (generally they'll go in here).
 

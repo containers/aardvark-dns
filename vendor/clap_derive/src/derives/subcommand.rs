@@ -75,10 +75,10 @@ pub fn gen_for_enum(
         )]
         #[deny(clippy::correctness)]
         impl #impl_generics clap::Subcommand for #enum_name #ty_generics #where_clause {
-            fn augment_subcommands <'b>(__clap_app: clap::App<'b>) -> clap::App<'b> {
+            fn augment_subcommands <'b>(__clap_app: clap::Command<'b>) -> clap::Command<'b> {
                 #augmentation
             }
-            fn augment_subcommands_for_update <'b>(__clap_app: clap::App<'b>) -> clap::App<'b> {
+            fn augment_subcommands_for_update <'b>(__clap_app: clap::Command<'b>) -> clap::Command<'b> {
                 #augmentation_update
             }
             fn has_subcommand(__clap_name: &str) -> bool {
@@ -165,11 +165,11 @@ fn gen_augment(
                         Some(subty) => {
                             if is_simple_ty(subty, "OsString") {
                                 quote_spanned! { kind.span()=>
-                                    let #app_var = #app_var.setting(clap::AppSettings::AllowExternalSubcommands).setting(clap::AppSettings::AllowInvalidUtf8ForExternalSubcommands);
+                                    let #app_var = #app_var.allow_external_subcommands(true).allow_invalid_utf8_for_external_subcommands(true);
                                 }
                             } else {
                                 quote_spanned! { kind.span()=>
-                                    let #app_var = #app_var.setting(clap::AppSettings::AllowExternalSubcommands);
+                                    let #app_var = #app_var.allow_external_subcommands(true);
                                 }
                             }
                         }
@@ -187,20 +187,21 @@ fn gen_augment(
                     Unnamed(FieldsUnnamed { ref unnamed, .. }) if unnamed.len() == 1 => {
                         let ty = &unnamed[0];
                         let old_heading_var = format_ident!("__clap_old_heading");
-                        let help_heading = attrs.help_heading();
+                        let next_help_heading = attrs.next_help_heading();
+                        let next_display_order = attrs.next_display_order();
                         let subcommand = if override_required {
                             quote! {
-                                let #old_heading_var = #app_var.get_help_heading();
-                                let #app_var = #app_var #help_heading;
+                                let #old_heading_var = #app_var.get_next_help_heading();
+                                let #app_var = #app_var #next_help_heading #next_display_order;
                                 let #app_var = <#ty as clap::Subcommand>::augment_subcommands_for_update(#app_var);
-                                let #app_var = #app_var.help_heading(#old_heading_var);
+                                let #app_var = #app_var.next_help_heading(#old_heading_var);
                             }
                         } else {
                             quote! {
-                                let #old_heading_var = #app_var.get_help_heading();
-                                let #app_var = #app_var #help_heading;
+                                let #old_heading_var = #app_var.get_next_help_heading();
+                                let #app_var = #app_var #next_help_heading #next_display_order;
                                 let #app_var = <#ty as clap::Subcommand>::augment_subcommands(#app_var);
-                                let #app_var = #app_var.help_heading(#old_heading_var);
+                                let #app_var = #app_var.next_help_heading(#old_heading_var);
                             }
                         };
                         Some(subcommand)
@@ -244,9 +245,10 @@ fn gen_augment(
                     let final_from_attrs = attrs.final_top_level_methods();
                     let subcommand = quote! {
                         let #app_var = #app_var.subcommand({
-                            let #subcommand_var = clap::App::new(#name);
+                            let #subcommand_var = clap::Command::new(#name);
                             let #subcommand_var = #subcommand_var #initial_app_methods;
                             let #subcommand_var = #arg_block;
+                            #[allow(deprecated)]
                             let #subcommand_var = #subcommand_var.setting(clap::AppSettings::SubcommandRequiredElseHelp);
                             #subcommand_var #final_from_attrs
                         });
@@ -258,7 +260,7 @@ fn gen_augment(
                     let subcommand_var = Ident::new("__clap_subcommand", Span::call_site());
                     let sub_augment = match variant.fields {
                         Named(ref fields) => {
-                            // Defer to `gen_augment` for adding app methods
+                            // Defer to `gen_augment` for adding cmd methods
                             args::gen_augment(&fields.named, &subcommand_var, &attrs, override_required)
                         }
                         Unit => {
@@ -302,7 +304,7 @@ fn gen_augment(
                     let name = attrs.cased_name();
                     let subcommand = quote! {
                         let #app_var = #app_var.subcommand({
-                            let #subcommand_var = clap::App::new(#name);
+                            let #subcommand_var = clap::Command::new(#name);
                             #sub_augment
                         });
                     };

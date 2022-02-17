@@ -43,9 +43,9 @@ pub struct Attrs {
     doc_comment: Vec<Method>,
     methods: Vec<Method>,
     parser: Sp<Parser>,
-    author: Option<Method>,
-    version: Option<Method>,
     verbatim_doc_comment: Option<Ident>,
+    next_display_order: Option<Method>,
+    next_help_heading: Option<Method>,
     help_heading: Option<Method>,
     is_enum: bool,
     has_custom_parser: bool,
@@ -317,7 +317,7 @@ impl Attrs {
                                 help = "if you want to create a flag add `long` or `short`";
                                 help = "If you really want a boolean parameter \
                                     add an explicit parser, for example `parse(try_from_str)`";
-                                note = "see also https://github.com/clap-rs/clap_derive/tree/master/examples/true_or_false.rs";
+                                note = "see also https://github.com/clap-rs/clap/blob/master/examples/derive_ref/custom-bool.md";
                             )
                         }
                         if res.is_enum {
@@ -376,9 +376,9 @@ impl Attrs {
             doc_comment: vec![],
             methods: vec![],
             parser: Parser::default_spanned(default_span),
-            author: None,
-            version: None,
             verbatim_doc_comment: None,
+            next_display_order: None,
+            next_help_heading: None,
             help_heading: None,
             is_enum: false,
             has_custom_parser: false,
@@ -389,10 +389,8 @@ impl Attrs {
     fn push_method(&mut self, name: Ident, arg: impl ToTokens) {
         if name == "name" {
             self.name = Name::Assigned(quote!(#arg));
-        } else if name == "version" {
-            self.version = Some(Method::new(name, quote!(#arg)));
         } else {
-            self.methods.push(Method::new(name, quote!(#arg)))
+            self.methods.push(Method::new(name, quote!(#arg)));
         }
     }
 
@@ -532,24 +530,33 @@ impl Attrs {
                     self.methods.push(Method::new(raw_ident, val));
                 }
 
+                NextDisplayOrder(ident, expr) => {
+                    self.next_display_order = Some(Method::new(ident, quote!(#expr)));
+                }
+
                 HelpHeading(ident, expr) => {
                     self.help_heading = Some(Method::new(ident, quote!(#expr)));
                 }
+                NextHelpHeading(ident, expr) => {
+                    self.next_help_heading = Some(Method::new(ident, quote!(#expr)));
+                }
 
-                About(ident, about) => {
-                    if let Some(method) =
-                        Method::from_lit_or_env(ident, about, "CARGO_PKG_DESCRIPTION")
-                    {
+                About(ident) => {
+                    if let Some(method) = Method::from_env(ident, "CARGO_PKG_DESCRIPTION") {
                         self.methods.push(method);
                     }
                 }
 
-                Author(ident, author) => {
-                    self.author = Method::from_lit_or_env(ident, author, "CARGO_PKG_AUTHORS");
+                Author(ident) => {
+                    if let Some(method) = Method::from_env(ident, "CARGO_PKG_AUTHORS") {
+                        self.methods.push(method);
+                    }
                 }
 
-                Version(ident, version) => {
-                    self.version = Method::from_lit_or_env(ident, version, "CARGO_PKG_VERSION");
+                Version(ident) => {
+                    if let Some(method) = Method::from_env(ident, "CARGO_PKG_VERSION") {
+                        self.methods.push(method);
+                    }
                 }
 
                 NameLitStr(name, lit) => {
@@ -623,17 +630,21 @@ impl Attrs {
 
     /// generate methods from attributes on top of struct or enum
     pub fn initial_top_level_methods(&self) -> TokenStream {
+        let next_display_order = self.next_display_order.as_ref().into_iter();
+        let next_help_heading = self.next_help_heading.as_ref().into_iter();
         let help_heading = self.help_heading.as_ref().into_iter();
-        quote!( #(#help_heading)* )
+        quote!(
+            #(#next_display_order)*
+            #(#next_help_heading)*
+            #(#help_heading)*
+        )
     }
 
     pub fn final_top_level_methods(&self) -> TokenStream {
-        let version = &self.version;
-        let author = &self.author;
         let methods = &self.methods;
         let doc_comment = &self.doc_comment;
 
-        quote!( #(#doc_comment)* #author #version #(#methods)*)
+        quote!( #(#doc_comment)* #(#methods)*)
     }
 
     /// generate methods on top of a field
@@ -655,9 +666,15 @@ impl Attrs {
         }
     }
 
-    pub fn help_heading(&self) -> TokenStream {
+    pub fn next_display_order(&self) -> TokenStream {
+        let next_display_order = self.next_display_order.as_ref().into_iter();
+        quote!( #(#next_display_order)* )
+    }
+
+    pub fn next_help_heading(&self) -> TokenStream {
+        let next_help_heading = self.next_help_heading.as_ref().into_iter();
         let help_heading = self.help_heading.as_ref().into_iter();
-        quote!( #(#help_heading)* )
+        quote!( #(#next_help_heading)*  #(#help_heading)* )
     }
 
     pub fn cased_name(&self) -> TokenStream {
@@ -733,25 +750,21 @@ impl Method {
         Method { name, args }
     }
 
-    fn from_lit_or_env(ident: Ident, lit: Option<LitStr>, env_var: &str) -> Option<Self> {
-        let mut lit = match lit {
-            Some(lit) => lit,
-
-            None => match env::var(env_var) {
-                Ok(val) => {
-                    if val.is_empty() {
-                        return None;
-                    }
-                    LitStr::new(&val, ident.span())
+    fn from_env(ident: Ident, env_var: &str) -> Option<Self> {
+        let mut lit = match env::var(env_var) {
+            Ok(val) => {
+                if val.is_empty() {
+                    return None;
                 }
-                Err(_) => {
-                    abort!(ident,
-                        "cannot derive `{}` from Cargo.toml", ident;
-                        note = "`{}` environment variable is not set", env_var;
-                        help = "use `{} = \"...\"` to set {} manually", ident, ident;
-                    );
-                }
-            },
+                LitStr::new(&val, ident.span())
+            }
+            Err(_) => {
+                abort!(ident,
+                    "cannot derive `{}` from Cargo.toml", ident;
+                    note = "`{}` environment variable is not set", env_var;
+                    help = "use `{} = \"...\"` to set {} manually", ident, ident;
+                );
+            }
         };
 
         if ident == "author" {

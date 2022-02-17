@@ -33,11 +33,9 @@ pub enum ClapAttr {
     Subcommand(Ident),
     VerbatimDocComment(Ident),
     ExternalSubcommand(Ident),
-
-    // ident [= "string literal"]
-    About(Ident, Option<LitStr>),
-    Author(Ident, Option<LitStr>),
-    Version(Ident, Option<LitStr>),
+    About(Ident),
+    Author(Ident),
+    Version(Ident),
 
     // ident = "string literal"
     RenameAllEnv(Ident, LitStr),
@@ -54,6 +52,8 @@ pub enum ClapAttr {
     NameExpr(Ident, Expr),
     DefaultValueT(Ident, Option<Expr>),
     DefaultValueOsT(Ident, Option<Expr>),
+    NextDisplayOrder(Ident, Expr),
+    NextHelpHeading(Ident, Expr),
     HelpHeading(Ident, Expr),
 
     // ident(arbitrary_expr,*)
@@ -73,37 +73,10 @@ impl Parse for ClapAttr {
 
             if input.peek(LitStr) {
                 let lit: LitStr = input.parse()?;
-                let lit_str = lit.value();
-
-                let check_empty_lit = |s| {
-                    if lit_str.is_empty() {
-                        abort!(
-                            lit,
-                            "`#[clap({} = \"\")` is deprecated, \
-                             now it's default behavior",
-                            s
-                        );
-                    }
-                };
 
                 match &*name_str {
                     "rename_all" => Ok(RenameAll(name, lit)),
                     "rename_all_env" => Ok(RenameAllEnv(name, lit)),
-
-                    "version" => {
-                        check_empty_lit("version");
-                        Ok(Version(name, Some(lit)))
-                    }
-
-                    "author" => {
-                        check_empty_lit("author");
-                        Ok(Author(name, Some(lit)))
-                    }
-
-                    "about" => {
-                        check_empty_lit("about");
-                        Ok(About(name, Some(lit)))
-                    }
 
                     "skip" => {
                         let expr = ExprLit {
@@ -114,6 +87,23 @@ impl Parse for ClapAttr {
                         Ok(Skip(name, Some(expr)))
                     }
 
+                    "next_display_order" => {
+                        let expr = ExprLit {
+                            attrs: vec![],
+                            lit: Lit::Str(lit),
+                        };
+                        let expr = Expr::Lit(expr);
+                        Ok(NextDisplayOrder(name, expr))
+                    }
+
+                    "next_help_heading" => {
+                        let expr = ExprLit {
+                            attrs: vec![],
+                            lit: Lit::Str(lit),
+                        };
+                        let expr = Expr::Lit(expr);
+                        Ok(NextHelpHeading(name, expr))
+                    }
                     "help_heading" => {
                         let expr = ExprLit {
                             attrs: vec![],
@@ -131,6 +121,8 @@ impl Parse for ClapAttr {
                         "skip" => Ok(Skip(name, Some(expr))),
                         "default_value_t" => Ok(DefaultValueT(name, Some(expr))),
                         "default_value_os_t" => Ok(DefaultValueOsT(name, Some(expr))),
+                        "next_display_order" => Ok(NextDisplayOrder(name, expr)),
+                        "next_help_heading" => Ok(NextHelpHeading(name, expr)),
                         "help_heading" => Ok(HelpHeading(name, expr)),
                         _ => Ok(NameExpr(name, expr)),
                     },
@@ -206,9 +198,9 @@ impl Parse for ClapAttr {
                 }
                 "default_value_t" => Ok(DefaultValueT(name, None)),
                 "default_value_os_t" => Ok(DefaultValueOsT(name, None)),
-                "about" => (Ok(About(name, None))),
-                "author" => (Ok(Author(name, None))),
-                "version" => Ok(Version(name, None)),
+                "about" => (Ok(About(name))),
+                "author" => (Ok(Author(name))),
+                "version" => Ok(Version(name)),
 
                 "skip" => Ok(Skip(name, None)),
 
@@ -274,12 +266,12 @@ fn raw_method_suggestion(ts: ParseBuffer) -> String {
         };
 
         format!(
-            "if you need to call `clap::Arg/App::{}` method you \
+            "if you need to call `clap::Arg/Command::{}` method you \
              can do it like this: #[clap({}{})]",
             name, name, suggestion
         )
     } else {
-        "if you need to call some method from `clap::Arg/App` \
+        "if you need to call some method from `clap::Arg/Command` \
          you should use raw method, see \
          https://github.com/clap-rs/clap/blob/master/examples/derive_ref/README.md#raw-attributes"
             .into()
