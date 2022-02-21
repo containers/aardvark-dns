@@ -5,7 +5,6 @@
 
 load helpers
 
-
 @test "two containers on different networks" {
 	setup_slirp4netns
 
@@ -111,13 +110,13 @@ load helpers
 	assert "$b1_ip"
 	# check ab2 from itself, first from the a side
 	dig "$ab2_pid" "abtwo" "$a_gw"
-	assert "${#lines[@]}"  = 2
-	assert "$output" =~  "$a2_ip"
-	assert "$output" =~  "$b2_ip"
+	assert "${#lines[@]}" = 2
+	assert "$output" =~ "$a2_ip"
+	assert "$output" =~ "$b2_ip"
 
 	# and now from the bside
 	dig "$ab2_pid" "abtwo" "$b_gw"
-	assert "${#lines[@]}"  = 2
-	assert "$output" =~  "$a2_ip"
-	assert "$output" =~  "$b2_ip"
+	assert "${#lines[@]}" = 2
+	assert "$output" =~ "$a2_ip"
+	assert "$output" =~ "$b2_ip"
 }

@@ -16,7 +16,6 @@ CONTAINER_NS_PID=
 CONTAINER_CONFIGS=()
 CONTAINER_NS_PIDS=()
 
-
 #### Functions below are taken from podman and buildah and adapted to netavark.
 
 ################
@@ -330,7 +329,8 @@ function run_netavark() {
 #
 # first arg must be the container pid
 function run_in_container_netns() {
-	con_pid=$1;shift
+    con_pid=$1
+    shift
     run_helper nsenter -n -t $con_pid "$@"
 }
 
@@ -352,21 +352,25 @@ function run_in_host_netns() {
 # fourth is subnet
 # fifth and greater are aliases
 function create_config() {
-    local network_name=$1; shift
-    local container_id=$1; shift
-    local container_name=$1; shift
+    local network_name=$1
+    shift
+    local container_id=$1
+    shift
+    local container_name=$1
+    shift
 
     local subnets=""
-	local subnet=$1; shift
-	container_ip=$(random_ip_in_subnet $subnet)
-	container_gw=$(gateway_from_subnet $subnet)
-	subnets="{\"subnet\":\"$subnet\",\"gateway\":\"$container_gw\"}"
-	aliases=""
-	comma=
-	for i; do
-		aliases+="$comma \"$i\""
-		comma=,
-	done
+    local subnet=$1
+    shift
+    container_ip=$(random_ip_in_subnet $subnet)
+    container_gw=$(gateway_from_subnet $subnet)
+    subnets="{\"subnet\":\"$subnet\",\"gateway\":\"$container_gw\"}"
+    aliases=""
+    comma=
+    for i; do
+        aliases+="$comma \"$i\""
+        comma=,
+    done
 
     create_network "$network_name" "$container_ip" "eth0" "$aliases"
     create_network_infos "$network_name" $(random_string 64) "$subnets"
@@ -393,12 +397,13 @@ EOF
 # arg2 network_id
 # arg3 is subnets
 function create_network_infos() {
-    local net_name=$1; shift
-    local net_id=$1; shift
-    local subnets=$1; shift
+    local net_name=$1
+    shift
+    local net_id=$1
+    shift
+    local subnets=$1
+    shift
     local interface_name=${net_name:0:7}
-
-
 
     read -r -d '\0' new_network_info <<EOF
     "$net_name": {
@@ -428,9 +433,12 @@ EOF
 # arg is interface (ethX)
 # arg are aliases
 function create_network() {
-    local net_name=$1; shift
-    local ip_address=$1; shift
-    local interface_name=$1; shift
+    local net_name=$1
+    shift
+    local ip_address=$1
+    shift
+    local interface_name=$1
+    shift
     local aliases=$1
 
     read -r -d '\0' new_network <<EOF
@@ -452,16 +460,16 @@ EOF
 ################
 # arg1 is config
 function create_container() {
-	CONTAINER_NS_PID=$(create_netns)
-	CONTAINER_NS_PIDS+=("$CONTAINER_NS_PID")
+    CONTAINER_NS_PID=$(create_netns)
+    CONTAINER_NS_PIDS+=("$CONTAINER_NS_PID")
     create_container_backend "$CONTAINER_NS_PID" "$1"
-	CONTAINER_CONFIGS+=("$1")
+    CONTAINER_CONFIGS+=("$1")
 }
 
 # arg1 is pid
 # arg2 is config
 function create_container_backend() {
-	run_netavark setup $(get_container_netns_path $1) <<<"$2"
+    run_netavark setup $(get_container_netns_path $1) <<<"$2"
 }
 
 ################
@@ -474,15 +482,15 @@ function connect() {
 }
 
 function basic_host_setup() {
-	HOST_NS_PID=$(create_netns)
-	# make sure to set DBUS_SYSTEM_BUS_ADDRESS to an empty value
-	# netavark will try to use firewalld connection when possible
-	# because we run in a separate netns we cannot use firewalld
-	# firewalld run in the host netns and not our custom netns
-	# thus the firewall rules end up in the wrong netns
-	# unsetting does not work, it would use the default address
-	export DBUS_SYSTEM_BUS_ADDRESS=
-	AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
+    HOST_NS_PID=$(create_netns)
+    # make sure to set DBUS_SYSTEM_BUS_ADDRESS to an empty value
+    # netavark will try to use firewalld connection when possible
+    # because we run in a separate netns we cannot use firewalld
+    # firewalld run in the host netns and not our custom netns
+    # thus the firewall rules end up in the wrong netns
+    # unsetting does not work, it would use the default address
+    export DBUS_SYSTEM_BUS_ADDRESS=
+    AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
 }
 
 function setup_slirp4netns() {
@@ -492,7 +500,7 @@ function setup_slirp4netns() {
     SLIRP4NETNS_PID=$!
 
     # create new resolv.conf with slirp4netns dns
-    echo "nameserver 10.0.2.3" > "$AARDVARK_TMPDIR/resolv.conf"
+    echo "nameserver 10.0.2.3" >"$AARDVARK_TMPDIR/resolv.conf"
     run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
 
     local timeout=6
@@ -510,16 +518,14 @@ function setup_slirp4netns() {
 }
 
 function basic_teardown() {
-	rm -fr "$AARDVARK_TMPDIR"
+    rm -fr "$AARDVARK_TMPDIR"
 }
 
-
-#
 ################
 #  netavark_teardown#  tears down a network
 ################
 function netavark_teardown() {
-	run_netavark teardown $1<<<"$2"
+    run_netavark teardown $1 <<<"$2"
 }
 
 function teardown() {
@@ -528,7 +534,6 @@ function teardown() {
         netavark_teardown $(get_container_netns_path "${CONTAINER_NS_PIDS[$i]}") "${CONTAINER_CONFIGS[$i]}"
         kill -9 "${CONTAINER_NS_PIDS[$i]}"
     done
-
 
     if [[ -n "$SLIRP4NETNS_PID" ]]; then
         kill -9 $SLIRP4NETNS_PID
@@ -545,16 +550,16 @@ function teardown() {
 }
 
 function dig() {
-# first arg is container_netns_pid
-# second arg is name
-# third arg is server addr
+    # first arg is container_netns_pid
+    # second arg is name
+    # third arg is server addr
     run_in_container_netns "$1" "dig" "+short" "$2" "@$3"
 }
 
 function dig_reverse() {
-# first arg is container_netns_pid
-# second arg is the IP address
-# third arg is server addr
+    # first arg is container_netns_pid
+    # second arg is the IP address
+    # third arg is server addr
     #run_in_container_netns "$1" "dig" "-x" "$2" "+short" "@$3"
     run_in_container_netns "$1" "nslookup" "$2" "$3"
 }
