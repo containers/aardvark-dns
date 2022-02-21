@@ -41,7 +41,7 @@ load helpers
 	b2_network_info="{$new_network_info}"
 	ab2_config=$(jq -r ".networks +=  $b2_network" <<<"$a2_config")
 	ab2_config=$(jq -r ".network_info += $b2_network_info" <<<"$ab2_config")
-	
+
 	create_container "$ab2_config"
 	ab2_pid=$CONTAINER_NS_PID
 
@@ -65,15 +65,15 @@ load helpers
 
 	# check ab2 from itself, first from the a side
 	dig "$ab2_pid" "abtwo" "$a_gw"
-	assert "${#lines[@]}"  = 2
-	assert "$output" =~  "$a2_ip"
-	assert "$output" =~  "$b2_ip"
+	assert "${#lines[@]}" = 2
+	assert "$output" =~ "$a2_ip"
+	assert "$output" =~ "$b2_ip"
 
 	# and now from the bside
 	dig "$ab2_pid" "abtwo" "$b_gw"
-	assert "${#lines[@]}"  = 2
-	assert "$output" =~  "$a2_ip"
-	assert "$output" =~  "$b2_ip"
+	assert "${#lines[@]}" = 2
+	assert "$output" =~ "$a2_ip"
+	assert "$output" =~ "$b2_ip"
 }
 
 @test "three subnets, one container on two of the subnets, network connect" {
@@ -110,10 +110,8 @@ load helpers
 	# a connect. First, we need to trim off the last two container
 	# configs for teardown. We will leave the NS_PIDS alone because
 	# the order should be OK.
-	# 
 
 	# Create B1 config for network connect
-	#
 	create_config "podman2" $(random_string 64) "aone" "$subnet_b" "aone_nw"
 	b1_config=$config
 	# The container ID should be the same
@@ -143,16 +141,14 @@ load helpers
 	c1b2_config=$(jq -r ".networks += $b2_network" <<<"$c1_config")
 	c1b2_config=$(jq -r ".network_info += $b2_network_info" <<<"$c1b2_config")
 
-	# Create the containers but do not add to NS_PIDS or CONTAINER_CONFIGS	
+	# Create the containers but do not add to NS_PIDS or CONTAINER_CONFIGS
 	connect "$a1_pid" "$b1_config"
 	connect "$c1_pid" "$b2_config"
 
 	# Reset CONTAINER_CONFIGS and add the two news ones
-	#
 	CONTAINER_CONFIGS=("$a1b1_config" "$c1b2_config")
 
 	# Verify
-	#
 	# b1 should be able to resolve cone through b subnet
 	dig "$a1_pid" "cone" "$b_gw"
 	assert "$b2_ip"
