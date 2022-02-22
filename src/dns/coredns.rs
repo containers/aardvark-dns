@@ -31,6 +31,9 @@ pub struct CoreDns {
 }
 
 impl CoreDns {
+    // Most of the arg can be removed in design refactor.
+    // so dont create a struct for this now.
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         address: IpAddr,
         port: u32,
@@ -53,10 +56,8 @@ impl CoreDns {
             if let Ok(n) = Name::parse(&network_name[..10], None) {
                 name = n;
             }
-        } else {
-            if let Ok(n) = Name::parse(&network_name, None) {
-                name = n;
-            }
+        } else if let Ok(n) = Name::parse(network_name, None) {
+            name = n;
         }
 
         debug!(
@@ -67,19 +68,14 @@ impl CoreDns {
         let mut resolv_conf: resolv_conf::Config = resolv_conf::Config::new();
         let mut buf = Vec::with_capacity(4096);
         if let Ok(mut f) = File::open("/etc/resolv.conf") {
-            match f.read_to_end(&mut buf) {
-                Ok(_) => {
-                    if let Ok(conf) = resolv_conf::Config::parse(&buf) {
-                        resolv_conf = conf;
-                    }
+            if f.read_to_end(&mut buf).is_ok() {
+                if let Ok(conf) = resolv_conf::Config::parse(&buf) {
+                    resolv_conf = conf;
                 }
-                // not able to read user's /etc/resolv.conf. It's user's setup fault
-                // all the external requests will not be forwarded
-                _ => {}
             }
         }
 
-        let network_name = network_name.to_owned().to_string();
+        let network_name = network_name.to_owned();
 
         Ok(CoreDns {
             name,
@@ -103,10 +99,7 @@ impl CoreDns {
     async fn register_port(&mut self) -> anyhow::Result<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
 
-        let no_proxy: bool = match env::var("AARDVARK_NO_PROXY") {
-            Ok(_) => true,
-            _ => false,
-        };
+        let no_proxy: bool = matches!(env::var("AARDVARK_NO_PROXY"), Ok(_));
 
         // Do we need to serve on tcp anywhere in future ?
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
@@ -128,7 +121,7 @@ impl CoreDns {
                     };
                     match msg_received {
                         Ok(msg) => {
-                            let src_address = msg.addr().clone();
+                            let src_address = msg.addr();
                             let sender = sender.clone();
                             let (name, record_type, mut req) = match parse_dns_msg(msg) {
                                 Some((name, record_type, req)) => (name, record_type, req),
@@ -175,7 +168,7 @@ impl CoreDns {
                                         ptr_lookup_ip = tmp;
                                     }
                                     // Length should be equal to 4 here, but just use > 0 for safety.
-                                    if ptr_lookup_ip.len() > 0 {
+                                    if !ptr_lookup_ip.is_empty() {
                                         split.push(ptr_lookup_ip);
                                     }
                                     ptr_lookup_ip = split.join(":");
@@ -219,48 +212,44 @@ impl CoreDns {
                                     debug!(
                                 "No backend lookup found, try resolving in current resolvers entry"
                             );
-                                    match self.backend.name_mappings.get(&self.network_name) {
-                                        Some(container_mappings) => {
-                                            for (key, value) in container_mappings {
+                                    if let Some(container_mappings) = self.backend.name_mappings.get(&self.network_name) {
+                                        for (key, value) in container_mappings {
 
-                                                // if query contains search domain, strip it out.
-                                                // Why? This is a workaround so aardvark works well
-                                                // with setup which was created for dnsname/dnsmasq
+                                            // if query contains search domain, strip it out.
+                                            // Why? This is a workaround so aardvark works well
+                                            // with setup which was created for dnsname/dnsmasq
 
-                                                let mut request_name = name.as_str().to_owned();
-                                                let mut filter_domain_ndots_complete = self.filter_search_domain.to_owned();
-                                                filter_domain_ndots_complete.push_str(".");
+                                            let mut request_name = name.as_str().to_owned();
+                                            let mut filter_domain_ndots_complete = self.filter_search_domain.to_owned();
+                                            filter_domain_ndots_complete.push('.');
 
-                                                if request_name.ends_with(&self.filter_search_domain) {
-                                                    request_name = match request_name.strip_suffix(&self.filter_search_domain) {
-                                                        Some(value) => value.to_string(),
-                                                        _ => {
-                                                            error!("Unable to parse string suffix, ignore parsing this request");
-                                                            continue;
-                                                        }
-                                                    };
-                                                    request_name.push_str(".");
-                                                }
-                                                if request_name.ends_with(&filter_domain_ndots_complete) {
-                                                    request_name = match request_name.strip_suffix(&filter_domain_ndots_complete) {
-                                                        Some(value) => value.to_string(),
-                                                        _ => {
-                                                            error!("Unable to parse string suffix, ignore parsing this request");
-                                                            continue;
-                                                        }
-                                                    };
-                                                    request_name.push_str(".");
-                                                }
-
-                                                // convert key to fully qualified domain name
-                                                let mut key_fqdn = key.to_owned();
-                                                key_fqdn.push_str(".");
-                                                if key_fqdn == request_name {
-                                                    resolved_ip_list = value.to_vec();
-                                                }
+                                            if request_name.ends_with(&self.filter_search_domain) {
+                                                request_name = match request_name.strip_suffix(&self.filter_search_domain) {
+                                                    Some(value) => value.to_string(),
+                                                     _ => {
+                                                        error!("Unable to parse string suffix, ignore parsing this request");
+                                                        continue;
+                                                    }
+                                                };
+                                                request_name.push('.');
                                             }
-                                        }
-                                        _ => { /*Nothing found request will be forwared to configured forwarder */
+                                            if request_name.ends_with(&filter_domain_ndots_complete) {
+                                                request_name = match request_name.strip_suffix(&filter_domain_ndots_complete) {
+                                                    Some(value) => value.to_string(),
+                                                     _ => {
+                                                        error!("Unable to parse string suffix, ignore parsing this request");
+                                                        continue;
+                                                    }
+                                                };
+                                                request_name.push('.');
+                                            }
+
+                                            // convert key to fully qualified domain name
+                                            let mut key_fqdn = key.to_owned();
+                                            key_fqdn.push('.');
+                                            if key_fqdn == request_name {
+                                                resolved_ip_list = value.to_vec();
+                                            }
                                         }
                                     }
                                 }
@@ -273,7 +262,7 @@ impl CoreDns {
                                     continue;
                                 }
                             };
-                            if resolved_ip_list.len() > 0
+                            if !resolved_ip_list.is_empty()
                                 && (record_type == RecordType::A || record_type == RecordType::AAAA)
                             {
                                 for record_addr in resolved_ip_list {
@@ -324,7 +313,7 @@ impl CoreDns {
                                             if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
                                                 let _ = tokio::spawn(req_sender);
                                                 if let Some(resp) = forward_dns_req(cl, req.clone()).await {
-                                                    if let Some(_) = reply(sender.clone(), src_address, &resp) {
+                                                    if reply(sender.clone(), src_address, &resp).is_some() {
                                                         // request resolved from following resolver so
                                                         // break and don't try other resolvers
                                                         break;
@@ -380,14 +369,9 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
                         name = q.name().to_string();
                         record_type = q.query_type();
 
-                        format!(
-                            "{} {} {}",
-                            q.name().to_string(),
-                            q.query_type(),
-                            q.query_class(),
-                        )
+                        format!("{} {} {}", q.name(), q.query_type(), q.query_class(),)
                     })
-                    .unwrap_or_else(|| Default::default(),),
+                    .unwrap_or_else(Default::default,),
                 msg.edns().is_some(),
             );
 

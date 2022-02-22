@@ -33,3 +33,9 @@ impl Run {
         Ok(())
     }
 }
+
+impl Default for Run {
+    fn default() -> Self {
+        Self::new()
+    }
+}

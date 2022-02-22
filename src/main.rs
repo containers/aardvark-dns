@@ -67,7 +67,7 @@ fn main() {
     let opts = Opts::parse();
 
     let dir = opts.config.unwrap_or_else(|| String::from("/dev/stdin"));
-    let port = opts.port.unwrap_or_else(|| 5533 as u32);
+    let port = opts.port.unwrap_or(5533_u32);
     let filter_search_domain = opts
         .filter_search_domain
         .unwrap_or_else(|| String::from(".dns.podman"));

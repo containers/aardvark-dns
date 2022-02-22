@@ -48,14 +48,11 @@ pub fn serve(
     };
 
     let server_pid = process::id().to_string();
-    match pid_file.write_all(server_pid.as_bytes()) {
-        Err(err) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Unable to write pid to file: {}", err),
-            ));
-        }
-        Ok(_) => {}
+    if let Err(err) = pid_file.write_all(server_pid.as_bytes()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("Unable to write pid to file: {}", err),
+        ));
     }
 
     // rust closes the fd only when it leaves the scope, since this is
@@ -84,6 +81,11 @@ fn core_serve_loop(
             let listen_ip_v4_clone = listen_ip_v4.clone();
             let listen_ip_v6_clone = listen_ip_v6.clone();
             let mut thread_handles = vec![];
+
+            // we need mutex so we so threads can still modify lock
+            // clippy is only doing linting and asking us to use atomic bool
+            // so manually allow this
+            #[allow(clippy::mutex_atomic)]
             let kill_switch = Arc::new(Mutex::new(false));
 
             // kill server if listen_ip's are empty
@@ -175,13 +177,12 @@ fn core_serve_loop(
             }
 
             let handle_signal = thread::spawn(move || {
-                for sig in signals.forever() {
+                if let Some(sig) = signals.forever().next() {
                     info!("Received SIGHUP will refresh servers: {:?}", sig);
-                    break;
                 }
             });
 
-            if let Ok(_) = handle_signal.join() {
+            if handle_signal.join().is_ok() {
                 send_broadcast(&tx);
                 if let Ok(mut switch) = kill_switch.lock() {
                     *switch = true;
@@ -216,7 +217,7 @@ fn core_serve_loop(
             tx.close();
             drop(tx);
 
-            return Ok(());
+            Ok(())
         }
         Err(e) => {
             return Err(std::io::Error::new(
@@ -243,7 +244,7 @@ async fn start_dns_server(
         port,
         name,
         forward,
-        53 as u16,
+        53_u16,
         backend_arc.backend,
         kill_switch,
         filter_search_domain,
@@ -283,9 +284,7 @@ fn server_refresh_request(address_string: String) {
             let client = SyncClient::new(conn);
             // server will be killed by last request
             if let Ok(name) = Name::from_str("anything.") {
-                match client.query(&name, DNSClass::IN, RecordType::A) {
-                    _ => {}
-                }
+                let _ = client.query(&name, DNSClass::IN, RecordType::A);
             }
         }
     }
