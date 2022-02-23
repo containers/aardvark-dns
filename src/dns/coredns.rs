@@ -332,7 +332,7 @@ impl CoreDns {
             }
         }
 
-        Ok(())
+        Ok(()) //TODO: My IDE sees this as unreachable code.  Fix when refactoring
     }
 }
 
