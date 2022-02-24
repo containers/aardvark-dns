@@ -39,6 +39,22 @@ dist-git](https://src.fedoraproject.org/rpms/aardvark-dns).
 
 The Fedora package builds Aardvark-dns using a compressed tarball of the vendored
 libraries that is attached to each upstream release.
+You can download them with the following:
+
+`https://github.com/containers/netavark/releases/download/v{version}/aardvark-dns-v{version}.tar.gz`
+
+And then create a cargo config file to point it to the vendor dir:
+```
+tar xvf %{SOURCE}
+mkdir -p .cargo
+cat >.cargo/config << EOF
+[source.crates-io]
+replace-with = "vendored-sources"
+
+[source.vendored-sources]
+directory = "vendor"
+EOF
+```
 
 The `aardvark-dns` binary is installed to `/usr/libexec/podman/aardvark-dns`.
 
