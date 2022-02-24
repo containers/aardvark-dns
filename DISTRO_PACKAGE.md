@@ -5,7 +5,7 @@ gets shipped in other distros, this should become a distro-agnostic
 document.
 
 ## Fedora Users
-Aardvark-dns is available as an officlal Fedora package on Fedora 35 and newer versions
+Aardvark-dns is available as an official Fedora package on Fedora 35 and newer versions
 and is only meant to be used with Podman v4 and newer releases. On Fedora 36
 and newer, fresh installations of the podman package will automatically install
 Aardvark-dns along with Netavark. If Aardvark-dns isn't present on your system,
@@ -20,7 +20,7 @@ repositories. Please consult the Podman packaging docs for instructions on how
 to fetch Podman v4.0 on Fedora 35.
 
 If you would like to test the latest unreleased upstream code, try the
-podman-next COPR
+podman-next COPR:
 
 ```console
 $ sudo dnf copr enable rhcontainerbot/podman-next
@@ -37,9 +37,8 @@ the official packages.
 The Fedora packaging sources for Aardvark-dns are available at the [Aardvark-dns
 dist-git](https://src.fedoraproject.org/rpms/aardvark-dns).
 
-The Fedora packaged versions of the rust crates that Aardvark-dns depends on are
-frequently out of date or unpackaged. So, the Fedora package builds Aardvark-dns using
-the dependencies vendored upstream, found in the `vendor` subdirectory.
+The Fedora package builds Aardvark-dns using a compressed tarball of the vendored
+libraries that is attached to each upstream release.
 
 The `aardvark-dns` binary is installed to `/usr/libexec/podman/aardvark-dns`.
 
