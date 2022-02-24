@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.0.1
+- Remove vendor directory from upstream github repository
+- Vendored libraries updates
+
 ## v1.0.0
 - First release of aardvark-dns.
 
