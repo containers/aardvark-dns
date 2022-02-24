@@ -4,7 +4,7 @@ version = 3
 
 [[package]]
 name = "aardvark-dns"
-version = "1.0.1-dev"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "async-broadcast",
