@@ -19,7 +19,7 @@ anyhow = "1.0.53"
 futures-util = "0.3.21"
 signal-hook = "0.3.13"
 tokio = { version = "1.15.0", features = ["tokio-macros", "full"] }
-async-broadcast = "0.3.4"
+async-broadcast = "0.4.0"
 resolv-conf = "0.7.0"
 
 [build-dependencies]
