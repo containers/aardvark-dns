@@ -8,7 +8,7 @@ use log::Level;
 use syslog::{BasicLogger, Facility, Formatter3164};
 
 #[derive(Parser, Debug)]
-#[clap(version = env!("VERGEN_BUILD_SEMVER"))]
+#[clap(version = env!("CARGO_PKG_VERSION"))]
 struct Opts {
     /// Path to configuration directory
     #[clap(short, long)]
