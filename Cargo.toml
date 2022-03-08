@@ -23,6 +23,4 @@ async-broadcast = "0.3.4"
 resolv-conf = "0.7.0"
 
 [build-dependencies]
-# latest version does not compile with rust v1.57
-vergen = { version = "=6.0.2", default-features = false, features = ["build", "rustc", "git"] }
-anyhow = "1.0"
+chrono = "*"
