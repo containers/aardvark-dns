@@ -145,6 +145,29 @@ fedora36_build_task:
     script:
         - cargo build
 
+ubuntu20_build_task:
+    alias: ubuntu20_build
+    depends_on:
+      - "build"
+    container:
+        cpu: 2
+        memory: 2
+        image: quay.io/libpod/ubuntu20rust
+    script:
+        - cargo build
+
+centos9_build_task:
+    alias: centos9_build
+    depends_on:
+      - "build"
+    container:
+        cpu: 2
+        memory: 2
+        image: quay.io/libpod/centos9rust
+    script:
+        - cargo build
+
+
 success_task:
   alias: "success"
   name: "Total success"
@@ -156,6 +179,9 @@ success_task:
     - "integration"
     - "meta"
     - "fedora36_build"
+    - "ubuntu20_build"
+    - "centos9_build"
+
   bin_cache: *ro_bin_cache
   clone_script: *noop
   # The paths used for uploaded artifacts are relative here and in Cirrus
