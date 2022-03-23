@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.0.2
+* Updated dependency libraries
+* Removed vergen dependency
+
 ## v1.0.1
 - Remove vendor directory from upstream github repository
 - Vendored libraries updates
