@@ -296,8 +296,8 @@ function create_netns() {
 
     # we have to wait for unshare and check that we have a new ns before returning
     local timeout=2
-    while [[ $timeout -gt 1 ]]; do
-        if [[ "$(ls -l /proc/self/ns/net)" != "$(ls -l /proc/$pid/ns/net)" ]]; then
+    while [[ $timeout -gt 0 ]]; do
+        if [ "$(readlink /proc/self/ns/net)" != "$(readlink /proc/$pid/ns/net)" ]; then
             echo $pid
             return
         fi
