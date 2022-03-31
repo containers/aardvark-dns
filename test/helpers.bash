@@ -503,7 +503,10 @@ function setup_slirp4netns() {
     echo "nameserver 10.0.2.3" >"$AARDVARK_TMPDIR/resolv.conf"
     run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
 
-    local timeout=6
+    # waiting for slirp4netns to start is uncertain in different environments
+    # this is causing flakes in upstream but its not easy to reproduce this flake
+    # timeout ensures that we minimize uncertainity of flakes in CI.
+    local timeout=10
     while [[ $timeout -gt 1 ]]; do
         run_in_host_netns ip addr
         if [[ "$output" =~ "tap0" ]]; then
