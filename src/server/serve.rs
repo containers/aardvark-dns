@@ -16,11 +16,6 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
-use std::str::FromStr;
-use std::time::Duration;
-use trust_dns_client::client::{Client, SyncClient};
-use trust_dns_client::rr::{DNSClass, Name, RecordType};
-use trust_dns_client::udp::UdpClientConnection;
 
 // Will be only used by server to share backend
 // across threads
@@ -78,8 +73,6 @@ fn core_serve_loop(
 
     match config::parse_configs(config_path) {
         Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-            let listen_ip_v4_clone = listen_ip_v4.clone();
-            let listen_ip_v6_clone = listen_ip_v6.clone();
             let mut thread_handles = vec![];
 
             // we need mutex so we so threads can still modify lock
@@ -187,24 +180,6 @@ fn core_serve_loop(
                 if let Ok(mut switch) = kill_switch.lock() {
                     *switch = true;
                 };
-
-                // kill servers
-                // TODO: we don't need these two loops anymore. But lets remove when some testing
-                // is done.
-                for (network_name, listen_ip_list) in listen_ip_v4_clone {
-                    debug!("Refreshing all servers for network {:?}", network_name);
-                    for ip in listen_ip_list {
-                        let address_string = format!("{}:{}", ip, port);
-                        server_refresh_request(address_string);
-                    }
-                }
-                for (network_name, listen_ip_list) in listen_ip_v6_clone {
-                    debug!("Refreshing all servers for network {:?}", network_name);
-                    for ip in listen_ip_list {
-                        let address_string = format!("{}:{}", ip, port);
-                        server_refresh_request(address_string);
-                    }
-                }
             }
 
             for handle in thread_handles {
@@ -274,18 +249,5 @@ async fn start_dns_server(
 async fn send_broadcast(tx: &async_broadcast::Sender<bool>) {
     if let Err(e) = tx.broadcast(true).await {
         error!("unable to broadcast to child threads: {:?}", e);
-    }
-}
-
-fn server_refresh_request(address_string: String) {
-    if let Ok(address) = address_string.parse() {
-        if let Ok(conn) = UdpClientConnection::with_timeout(address, Duration::from_millis(5)) {
-            // and then create the Client
-            let client = SyncClient::new(conn);
-            // server will be killed by last request
-            if let Ok(name) = Name::from_str("anything.") {
-                let _ = client.query(&name, DNSClass::IN, RecordType::A);
-            }
-        }
     }
 }
