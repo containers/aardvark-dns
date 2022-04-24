@@ -99,7 +99,11 @@ pub fn parse_configs(
                     let ctr_networks = network_membership
                         .entry(entry.id.clone())
                         .or_insert_with(Vec::new);
-                    ctr_networks.push(network_name.clone());
+
+                    // Keep the network deduplicated
+                    if !ctr_networks.contains(&network_name) {
+                        ctr_networks.push(network_name.clone());
+                    }
 
                     // Container IP addresses
                     let mut new_ctr_ips: Vec<IpAddr> = Vec::new();
