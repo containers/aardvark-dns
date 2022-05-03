@@ -11,7 +11,7 @@ exclude = ["/.cirrus.yml", "/.github/*"]
 [dependencies]
 clap = { version = "3.1.14", features = ["derive"] }
 syslog = "^6.0"
-log = "0.4.16"
+log = "0.4.17"
 trust-dns-server = "0.21.2"
 trust-dns-proto = "0.20.4"
 trust-dns-client = "0.20.4"
