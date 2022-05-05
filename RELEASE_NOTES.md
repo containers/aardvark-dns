@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.0.3
+* Updated dependancy libraries
+* Reduction in CPU use
+* Fixed bug with duplicate network names
+
+
 ## v1.0.2
 * Updated dependency libraries
 * Removed vergen dependency
