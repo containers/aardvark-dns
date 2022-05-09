@@ -173,3 +173,82 @@ load helpers
 	dig "$c1_pid" "aone_nw" "$c_gw"
 	assert "$b1_ip"
 }
+
+
+@test "three subnets two ipaddress v6 and one ipaddress v4, one container on two of the subnets, network connect" {
+	# Create all three subnets
+	# Two of the subnets must be on ip addresss v6 and one on ip address v4
+	subnet_a=$(random_subnet 5)
+	subnet_b=$(random_subnet 6)
+	subnet_c=$(random_subnet 6)
+
+	# A1 on subnet A
+	create_config "podman1" $(random_string 64) "aone" "$subnet_a"
+	a1_config=$config
+	a1_container_id=$(echo "$a1_config" | jq -r .container_id)
+	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
+	a_gw=$(echo "$a1_config" | jq -r .network_info.podman1.subnets[0].gateway)
+	a1_hash=$(echo "$a1_config" | jq -r .network_info.podman1.id)
+	create_container "$a1_config"
+	a1_pid=$CONTAINER_NS_PID
+
+	# C1 on subnet C
+	create_config "podman3" $(random_string 64) "cone" "$subnet_c"
+	c1_config=$config
+	c1_container_id=$(echo "$c1_config" | jq -r .container_id)
+	c1_ip=$(echo "$c1_config" | jq -r .networks.podman3.static_ips[0])
+	c_gw=$(echo "$c1_config" | jq -r .network_info.podman3.subnets[0].gateway)
+	c1_hash=$(echo "$c1_config" | jq -r .network_info.podman3.id)
+	create_container "$c1_config"
+	c1_pid=$CONTAINER_NS_PID
+	c_subnets=$(echo $c1_config | jq -r .network_info.podman3.subnets[0])
+
+	# We now have one container on A and one on C.  We now similate
+	# a network connect on both to B.
+
+	# Create B1 config for network connect
+	create_config "podman2" $(random_string 64) "aone" "$subnet_b" "aone_nw"
+	b1_config=$config
+	# The container ID should be the same
+	b1_config=$(jq ".container_id  |= \"$a1_container_id\"" <<<"$b1_config")
+	b1_config=$(jq ".networks.podman2.interface_name |= \"eth1\"" <<<"$b1_config")
+	b1_network=$(echo "$b1_config" | jq -r .networks)
+	b1_network_info=$(echo "$b1_config" | jq -r .network_info)
+	b1_ip=$(echo "$b1_network" | jq -r .podman2.static_ips[0])
+	b_gw=$(echo "$b1_network_info" | jq -r .podman2.subnets[0].gateway)
+
+	# Now we must merge a1 and b1 for eventual teardown
+	a1b1_config=$(jq -r ".networks += $b1_network" <<<"$a1_config")
+	a1b1_config=$(jq -r ".network_info += $b1_network_info" <<<"$a1b1_config")
+
+	# Create B2 config for network connect
+	#
+	create_config "podman2" $(random_string 64) "cone" "$subnet_b" "cone_nw"
+	b2_config=$config
+	# The container ID should be the same
+	b2_config=$(jq ".container_id  |= \"$c1_container_id\"" <<<"$b2_config")
+	b2_config=$(jq ".networks.podman2.interface_name |= \"eth1\"" <<<"$b2_config")
+	b2_network=$(echo "$b2_config" | jq -r .networks)
+	b2_network_info=$(echo "$b2_config" | jq -r .network_info)
+	b2_ip=$(echo "$b2_network" | jq -r .podman2.static_ips[0])
+
+	# Now we must merge c1 and b2 for eventual teardown
+	c1b2_config=$(jq -r ".networks += $b2_network" <<<"$c1_config")
+	c1b2_config=$(jq -r ".network_info += $b2_network_info" <<<"$c1b2_config")
+
+	# Create the containers but do not add to NS_PIDS or CONTAINER_CONFIGS
+	connect "$a1_pid" "$b1_config"
+	connect "$c1_pid" "$b2_config"
+
+	# Reset CONTAINER_CONFIGS and add the two news ones
+	CONTAINER_CONFIGS=("$a1b1_config" "$c1b2_config")
+
+	# Verify
+	# b1 should be able to resolve cone through b subnet
+	dig "$a1_pid" "cone" "$b_gw"
+	assert "$b2_ip"
+
+	# a1 should be able to resolve cone
+	dig "$a1_pid" "cone" "$a_gw"
+	assert "$b2_ip"
+}
