@@ -79,6 +79,13 @@ build_unit: $(CARGO_TARGET_DIR)
 unit: $(CARGO_TARGET_DIR)
 	cargo test
 
+#.PHONY: code_coverage
+# Can be used by CI and users to generate code coverage report based on aardvark unit tests
+code_coverage: $(CARGO_TARGET_DIR)
+	# Downloads tarpaulin only if same version is not present on local
+	cargo install cargo-tarpaulin
+	cargo tarpaulin -v
+
 #.PHONY: integration
 integration: $(CARGO_TARGET_DIR)
 	# needs to be run as root or with podman unshare --rootless-netns
