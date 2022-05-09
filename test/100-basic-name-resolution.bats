@@ -23,6 +23,38 @@ load helpers
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
 }
 
+@test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
+	setup_slirp4netns
+
+	subnet_a=$(random_subnet 5)
+	create_config "podman1" $(random_string 64) "aone" "$subnet_a" "a1" "1a"
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$gw"
+	assert "$output" =~ "NXDOMAIN"
+}
+
+@test "basic container - dns itself on container with ipaddress v6" {
+	setup_slirp4netns
+
+	subnet_a=$(random_subnet 6)
+	create_config "podman1" $(random_string 64) "aone" "$subnet_a" "a1" "1a"
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
+	assert "$ip_a1"
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
+	# validate that we get an ipv4
+	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+}
+
 @test "basic container - dns itself with long network name" {
 	subnet_a=$(random_subnet 5)
 	long_name="podman11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111"
