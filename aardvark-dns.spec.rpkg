@@ -43,11 +43,7 @@ Source:     {{{ git_dir_pack }}}
 BuildRequires: cargo
 BuildRequires: git-core
 BuildRequires: make
-
 ExclusiveArch:  %{rust_arches}
-%if %{__cargo_skip_build}
-BuildArch:      noarch
-%endif
 
 %global _description %{expand:
 %{summary}}
