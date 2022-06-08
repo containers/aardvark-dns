@@ -58,7 +58,9 @@ impl DNSBackend {
     // TODO: right now this returns v4 and v6 addresses intermixed and relies on
     // the caller to sort through them; we could add a v6 bool as an argument
     // and do it here instead.
-    pub fn lookup(&self, requester: &IpAddr, mut name: &str) -> DNSResult {
+    pub fn lookup(&self, requester: &IpAddr, entry: &str) -> DNSResult {
+        // Normalize lookup entry to lowercase.
+        let mut name = entry.to_lowercase();
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
             None => return DNSResult::NoSuchIP,
@@ -78,11 +80,11 @@ impl DNSBackend {
             if !name.is_empty() {
                 if let Some(lastchar) = name.chars().last() {
                     if lastchar == '.' {
-                        name = &name[0..name.len() - 1];
+                        name = (&name[0..name.len() - 1]).to_string();
                     }
                 }
             }
-            if let Some(addrs) = net_names.get(name) {
+            if let Some(addrs) = net_names.get(&name) {
                 results.append(&mut addrs.clone());
             }
         }
