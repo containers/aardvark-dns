@@ -270,7 +270,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
         }
         let aliases: Vec<String> = parts[3]
             .split(',')
-            .map(|x| x.to_string())
+            .map(|x| x.to_string().to_lowercase())
             .collect::<Vec<String>>();
 
         if aliases.is_empty() {
@@ -285,7 +285,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
         }
 
         ctrs.push(CtrEntry {
-            id: parts[0].to_string(),
+            id: parts[0].to_string().to_lowercase(),
             v4: v4_addr,
             v6: v6_addr,
             aliases,

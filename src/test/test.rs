@@ -63,6 +63,48 @@ mod tests {
     }
     #[test]
     // Check lookup query from backend and simulate
+    // case-insensitive dns request from same container
+    // to itself but aardvark must return one ip address i.e v4.
+    // Request address must be v4.
+    // Same container --> (resolve) Same container name --> (on) Same Network
+    fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive(
+    ) {
+        match config::parse_configs("src/test/config/podman") {
+            Ok((backend, _, _)) => {
+                match backend.lookup(&"10.88.0.2".parse().unwrap(), "helloworld") {
+                    DNSResult::Success(ip_vec) => {
+                        assert_eq!(ip_vec.len(), 1);
+                        assert_eq!("10.88.0.5".parse(), Ok(ip_vec[0]));
+                    }
+                    _ => panic!("unexpected dns result"),
+                }
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+    #[test]
+    // Check lookup query from backend and simulate
+    // case-insensitive dns request from same container
+    // to itself but aardvark must return one ip address i.e v4.
+    // Request address must be v4.
+    // Same container --> (resolve) Same container name --> (on) Same Network
+    fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive_uppercase(
+    ) {
+        match config::parse_configs("src/test/config/podman") {
+            Ok((backend, _, _)) => {
+                match backend.lookup(&"10.88.0.2".parse().unwrap(), "HELLOWORLD") {
+                    DNSResult::Success(ip_vec) => {
+                        assert_eq!(ip_vec.len(), 1);
+                        assert_eq!("10.88.0.5".parse(), Ok(ip_vec[0]));
+                    }
+                    _ => panic!("unexpected dns result"),
+                }
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+    #[test]
+    // Check lookup query from backend and simulate
     // nx_domain on bad lookup queries.
     fn test_lookup_queries_from_backend_simulate_nx_domain() {
         match config::parse_configs("src/test/config/podman") {
