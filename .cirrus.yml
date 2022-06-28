@@ -37,6 +37,27 @@ gce_instance: &standard_vm
     image_name: "${FEDORA_NETAVARK_IMAGE}"
 
 
+cargo_cache_common: &cargo_cache
+    folder: "$CARGO_HOME"
+    fingerprint_key: "cargo_v1_${DEST_BRANCH}"  # Cache for branch + PRs
+    reupload_on_changes: true
+
+targets_cache_common: &targets_cache
+    folder: "$CARGO_TARGET_DIR"
+    fingerprint_key: "targets_v1_${CIRRUS_BUILD_ID}" # Cache only within same build
+    reupload_on_changes: true
+
+bin_cache_common: &bin_cache
+    # This simply prevents rebuilding bin/aardvark-dns* or every subsequent task.
+    folder: "$CIRRUS_WORKING_DIR/bin"
+    fingerprint_key: "bin_v1_${CIRRUS_BUILD_ID}" # Cache only within same build
+    reupload_on_changes: true
+
+
+setup_script: &setup "$SCRIPT_BASE/setup.sh $CIRRUS_TASK_NAME"
+
+main_script: &main "$SCRIPT_BASE/runner.sh $CIRRUS_TASK_NAME"
+
 build_task:
   alias: "build"
   # Compiling is very CPU intensive, make it chooch quicker for this task only
@@ -44,21 +65,32 @@ build_task:
     <<: *standard_vm
     cpu: 8
     memory: "8Gb"
-  cargo_cache: &cargo_cache
-    folder: "$CARGO_HOME"
-    fingerprint_key: "cargo_v1_${DEST_BRANCH}"  # Cache for branch + PRs
-    reupload_on_changes: true
-  targets_cache: &targets_cache
-    folder: "$CARGO_TARGET_DIR"
-    fingerprint_key: "targets_v1_${CIRRUS_BUILD_ID}" # Cache only within same build
-    reupload_on_changes: true
-  bin_cache: &bin_cache
-    # This simply prevents rebuilding bin/aardvark-dns* or every subsequent task.
-    folder: "$CIRRUS_WORKING_DIR/bin"
-    fingerprint_key: "bin_v1_${CIRRUS_BUILD_ID}" # Cache only within same build
-    reupload_on_changes: true
-  setup_script: &setup "$SCRIPT_BASE/setup.sh $CIRRUS_TASK_NAME"
-  main_script: &main "$SCRIPT_BASE/runner.sh $CIRRUS_TASK_NAME"
+  cargo_cache: *cargo_cache
+  targets_cache: *targets_cache
+  bin_cache: *bin_cache
+  setup_script: *setup
+  main_script: *main
+  upload_caches: [ "cargo", "targets", "bin" ]
+
+
+aws_credentials: ENCRYPTED[3fab904a98355f84b0bac084f8a50428ff8a27dd2b6a6c42fca77df89010e620a1da3cd246a50b1074e6787c42818080]
+
+# Default aarch64 AWS instance to use unless set or modified by task
+ec2_instance: &standard_aarch64_instance
+  image: ami-0a72cf7a8b5b513d4
+  type: t4g.micro
+  region: us-east-1
+  architecture: arm64
+
+build_aarch64_task:
+  alias: "build_aarch64"
+  # Compiling is very CPU intensive, make it chooch quicker for this task only
+  ec2_instance: *standard_aarch64_instance
+  cargo_cache: *cargo_cache
+  targets_cache: *targets_cache
+  bin_cache: *bin_cache
+  setup_script: *setup
+  main_script: *main
   upload_caches: [ "cargo", "targets", "bin" ]
 
 
@@ -173,6 +205,7 @@ success_task:
   name: "Total success"
   depends_on:
     - "build"
+    - "build_aarch64"
     - "validate"
     - "verify_vendor"
     - "unit"
