@@ -60,6 +60,8 @@ main_script: &main "$SCRIPT_BASE/runner.sh $CIRRUS_TASK_NAME"
 
 build_task:
   alias: "build"
+  depends_on:
+    - "build_aarch64"
   # Compiling is very CPU intensive, make it chooch quicker for this task only
   gce_instance:
     <<: *standard_vm
@@ -190,8 +192,8 @@ ubuntu20_build_task:
 
 centos9_build_task:
     alias: centos9_build
-    depends_on:
-      - "build"
+    #depends_on:
+    #  - "build"
     container:
         cpu: 2
         memory: 2
