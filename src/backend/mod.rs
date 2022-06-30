@@ -38,17 +38,15 @@ pub enum DNSResult {
 
 impl DNSBackend {
     // Create a new backend from the given set of network mappings.
-    // TODO: If we want to optimize even more strongly, we can probably avoid
-    // the clone() calls here.
     pub fn new(
-        containers: &HashMap<IpAddr, Vec<String>>,
-        networks: &HashMap<String, HashMap<String, Vec<IpAddr>>>,
-        reverse: &HashMap<String, HashMap<IpAddr, Vec<String>>>,
+        containers: HashMap<IpAddr, Vec<String>>,
+        networks: HashMap<String, HashMap<String, Vec<IpAddr>>>,
+        reverse: HashMap<String, HashMap<IpAddr, Vec<String>>>,
     ) -> DNSBackend {
         DNSBackend {
-            ip_mappings: containers.clone(),
-            name_mappings: networks.clone(),
-            reverse_mappings: reverse.clone(),
+            ip_mappings: containers,
+            name_mappings: networks,
+            reverse_mappings: reverse,
         }
     }
 

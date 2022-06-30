@@ -169,7 +169,7 @@ pub fn parse_configs(
     }
 
     Ok((
-        DNSBackend::new(&ctrs, &network_names, &reverse),
+        DNSBackend::new(ctrs, network_names, reverse),
         listen_ips_4,
         listen_ips_6,
     ))
