@@ -26,24 +26,24 @@ env:
 
 gcp_credentials: ENCRYPTED[f6a0e4101418bec8180783b208721fc990772817364fed0346f5fd126bf0cfca03738dd8c7fb867944637a1eac7cec37]
 
-
-# Default VM to use unless set or modified by task
-gce_instance: &standard_vm
-    image_project: "libpod-218412"
-    zone: "us-central1-c"
-    cpu: 2
-    memory: "4Gb"
-    disk: 200  # GB, do not set <200 per gcloud warning re: I/O performance
-    image_name: "${FEDORA_NETAVARK_IMAGE}"
-
+#gce_instance: &standard_vm
+#   image_project: "libpod-218412"
+#   zone: "us-central1-c"
+#   cpu: 2
+#   memory: "4Gb"
+#   disk: 200  # GB, do not set <200 per gcloud warning re: I/O performance
+#    image_name: "${FEDORA_NETAVARK_IMAGE}"
 
 build_task:
   alias: "build"
   # Compiling is very CPU intensive, make it chooch quicker for this task only
-  gce_instance:
-    <<: *standard_vm
+  gce_instance: &standard_build_gce
+    image_project: "libpod-218412"
+    zone: "us-central1-c"
+    disk: 200  # GB, do not set <200 per gcloud warning re: I/O performance
     cpu: 8
     memory: "8Gb"
+    image_name: "${FEDORA_NETAVARK_IMAGE}"
   cargo_cache: &cargo_cache
     folder: "$CARGO_HOME"
     fingerprint_key: "cargo_v1_${DEST_BRANCH}"  # Cache for branch + PRs
@@ -66,6 +66,10 @@ validate_task:
   alias: "validate"
   depends_on:
     - "build"
+  gce_instance: &standard_gce
+    <<: *standard_build_gce
+    cpu: 2
+    memory: "4Gb"
   # From this point forward, all cache's become read-only for this run.
   cargo_cache: &ro_cargo_cache
     <<: *cargo_cache
@@ -84,6 +88,7 @@ verify_vendor_task:
   alias: "verify_vendor"
   depends_on:
     - "build"
+  gce_instance: *standard_gce
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
@@ -95,6 +100,7 @@ unit_task:
   alias: "unit"
   depends_on:
     - "build"  # Run in parallel with validate to save some time
+  gce_instance: *standard_gce
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
@@ -106,6 +112,7 @@ integration_task:
   alias: "integration"
   depends_on:
     - "unit"
+  gce_instance: *standard_gce
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
@@ -138,6 +145,7 @@ fedora36_build_task:
     alias: fedora36_build
     depends_on:
       - "build"
+    gce_instance: *standard_gce
     container:
         cpu: 2
         memory: 2
@@ -149,6 +157,7 @@ ubuntu20_build_task:
     alias: ubuntu20_build
     depends_on:
       - "build"
+    gce_instance: *standard_gce
     container:
         cpu: 2
         memory: 2
@@ -160,6 +169,7 @@ centos9_build_task:
     alias: centos9_build
     depends_on:
       - "build"
+    gce_instance: *standard_gce
     container:
         cpu: 2
         memory: 2
@@ -170,6 +180,7 @@ centos9_build_task:
 
 success_task:
   alias: "success"
+  gce_instance: *standard_gce
   name: "Total success"
   depends_on:
     - "build"
