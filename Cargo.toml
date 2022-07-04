@@ -23,4 +23,4 @@ async-broadcast = "0.4.0"
 resolv-conf = "0.7.0"
 
 [build-dependencies]
-chrono = "*"
+chrono = "0.4.7"
