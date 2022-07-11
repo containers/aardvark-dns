@@ -35,3 +35,5 @@ make
 ```console
 RUST_LOG=trace ./bin/aardvark-dns --config src/test/config/podman/ --port 5533 run
 ```
+
+### DO NOT MERGE - CI TEST PR

@@ -35,6 +35,10 @@ task: https://cirrus-ci.com/task/$CIRRUS_TASK_ID
 EOF
 }
 
+_run_build_aarch64() {
+    _run_build
+}
+
 _run_validate() {
     make validate
 }

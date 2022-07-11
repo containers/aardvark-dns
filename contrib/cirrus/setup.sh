@@ -25,5 +25,5 @@ set -x  # show what's happening
 curl --fail --location -o /tmp/netavark.zip "$NETAVARK_URL"
 mkdir -p /usr/libexec/podman
 cd /usr/libexec/podman
-unzip /tmp/netavark.zip
-chmod a+x /usr/libexec/podman/netavark
+#unzip -q /tmp/netavark.zip
+#chmod a+x /usr/libexec/podman/netavark
