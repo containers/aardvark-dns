@@ -35,8 +35,16 @@ task: https://cirrus-ci.com/task/$CIRRUS_TASK_ID
 EOF
 }
 
+_run_build_aarch64() {
+    _run_build
+}
+
 _run_validate() {
     make validate
+}
+
+_run_validate_aarch64() {
+    _run_validate
 }
 
 _run_verify_vendor() {
@@ -46,12 +54,25 @@ _run_verify_vendor() {
     fi
 }
 
+_run_verify_vendor_aarch64() {
+    _run_verify_vendor
+}
+
 _run_unit() {
     make unit
 }
 
+_run_unit_aarch64() {
+    _run_unit
+}
+
 _run_integration() {
     make integration
+}
+
+_run_integration_aarch64() {
+    make # FIXME: (@lsm5) investigate why cached binary isn't being reused
+    _run_integration
 }
 
 show_env_vars
