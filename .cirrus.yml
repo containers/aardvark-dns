@@ -26,24 +26,18 @@ env:
 
 gcp_credentials: ENCRYPTED[f6a0e4101418bec8180783b208721fc990772817364fed0346f5fd126bf0cfca03738dd8c7fb867944637a1eac7cec37]
 
-
-# Default VM to use unless set or modified by task
-gce_instance: &standard_vm
-    image_project: "libpod-218412"
-    zone: "us-central1-c"
-    cpu: 2
-    memory: "4Gb"
-    disk: 200  # GB, do not set <200 per gcloud warning re: I/O performance
-    image_name: "${FEDORA_NETAVARK_IMAGE}"
-
+aws_credentials: ENCRYPTED[3fab904a98355f84b0bac084f8a50428ff8a27dd2b6a6c42fca77df89010e620a1da3cd246a50b1074e6787c42818080]
 
 build_task:
   alias: "build"
   # Compiling is very CPU intensive, make it chooch quicker for this task only
-  gce_instance:
-    <<: *standard_vm
+  gce_instance: &standard_build_gce_x86_64
+    image_project: "libpod-218412"
+    zone: "us-central1-c"
+    disk: 200  # GB, do not set <200 per gcloud warning re: I/O performance
     cpu: 8
     memory: "8Gb"
+    image_name: "${FEDORA_NETAVARK_IMAGE}"
   cargo_cache: &cargo_cache
     folder: "$CARGO_HOME"
     fingerprint_key: "cargo_v1_${DEST_BRANCH}"  # Cache for branch + PRs
@@ -62,10 +56,36 @@ build_task:
   upload_caches: [ "cargo", "targets", "bin" ]
 
 
+build_aarch64_task:
+  alias: "build_aarch64"
+  # Compiling is very CPU intensive, make it chooch quicker for this task only
+  ec2_instance: &standard_build_ec2_aarch64
+    image: ami-0f89dfa699fe590b0
+    type: t4g.xlarge
+    region: us-east-1
+    architecture: arm64  # CAUTION: This has to be "arm64", not aarch64.
+  cargo_cache: &cargo_cache_aarch64
+    <<: *cargo_cache
+    fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
+  targets_cache: &targets_cache_aarch64
+    <<: *targets_cache
+    fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
+  bin_cache: &bin_cache_aarch64
+    <<: *bin_cache
+    fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
+  setup_script: *setup
+  main_script: *main
+  upload_caches: [ "cargo", "targets", "bin" ]
+
+
 validate_task:
   alias: "validate"
   depends_on:
     - "build"
+  gce_instance: &standard_gce_x86_64
+    <<: *standard_build_gce_x86_64
+    cpu: 2
+    memory: "4Gb"
   # From this point forward, all cache's become read-only for this run.
   cargo_cache: &ro_cargo_cache
     <<: *cargo_cache
@@ -80,13 +100,45 @@ validate_task:
   main_script: *main
 
 
+validate_aarch64_task:
+  alias: "validate_aarch64"
+  depends_on:
+    - "build_aarch64"
+  ec2_instance: *standard_build_ec2_aarch64
+  # From this point forward, all cache's become read-only for this run.
+  cargo_cache: &ro_cargo_cache_aarch64
+    <<: *cargo_cache_aarch64
+    reupload_on_changes: false
+  targets_cache: &ro_targets_cache_aarch64
+    <<: *targets_cache_aarch64
+    reupload_on_changes: false
+  bin_cache: &ro_bin_cache_aarch64
+    <<: *bin_cache_aarch64
+    reupload_on_changes: false
+  setup_script: *setup
+  main_script: *main
+
+
 verify_vendor_task:
   alias: "verify_vendor"
   depends_on:
     - "build"
+  gce_instance: *standard_gce_x86_64
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
+  setup_script: *setup
+  main_script: *main
+
+
+verify_vendor_aarch64_task:
+  alias: "verify_vendor_aarch64"
+  depends_on:
+    - "build_aarch64"
+  ec2_instance: *standard_build_ec2_aarch64
+  cargo_cache: *ro_cargo_cache_aarch64
+  targets_cache: *ro_targets_cache_aarch64
+  bin_cache: *ro_bin_cache_aarch64
   setup_script: *setup
   main_script: *main
 
@@ -95,9 +147,22 @@ unit_task:
   alias: "unit"
   depends_on:
     - "build"  # Run in parallel with validate to save some time
+  gce_instance: *standard_gce_x86_64
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
+  setup_script: *setup
+  main_script: *main
+
+
+unit_aarch64_task:
+  alias: "unit_aarch64"
+  depends_on:
+    - "build_aarch64"  # Run in parallel with validate to save some time
+  ec2_instance: *standard_build_ec2_aarch64
+  cargo_cache: *ro_cargo_cache_aarch64
+  targets_cache: *ro_targets_cache_aarch64
+  bin_cache: *ro_bin_cache_aarch64
   setup_script: *setup
   main_script: *main
 
@@ -106,9 +171,22 @@ integration_task:
   alias: "integration"
   depends_on:
     - "unit"
+  gce_instance: *standard_gce_x86_64
   cargo_cache: *ro_cargo_cache
   targets_cache: *ro_targets_cache
   bin_cache: *ro_bin_cache
+  setup_script: *setup
+  main_script: *main
+
+
+integration_aarch64_task:
+  alias: "integration_aarch64"
+  depends_on:
+    - "unit_aarch64"
+  ec2_instance: *standard_build_ec2_aarch64
+  cargo_cache: *ro_cargo_cache_aarch64
+  targets_cache: *ro_targets_cache_aarch64
+  bin_cache: *ro_bin_cache_aarch64
   setup_script: *setup
   main_script: *main
 
@@ -134,21 +212,11 @@ meta_task:
     clone_script: &noop mkdir -p $CIRRUS_WORKING_DIR  # source not needed
     script: /usr/local/bin/entrypoint.sh
 
-fedora36_build_task:
-    alias: fedora36_build
-    depends_on:
-      - "build"
-    container:
-        cpu: 2
-        memory: 2
-        image: quay.io/libpod/fedora36rust
-    script:
-        - cargo build
-
 ubuntu20_build_task:
     alias: ubuntu20_build
     depends_on:
       - "build"
+    gce_instance: *standard_gce_x86_64
     container:
         cpu: 2
         memory: 2
@@ -160,6 +228,7 @@ centos9_build_task:
     alias: centos9_build
     depends_on:
       - "build"
+    gce_instance: *standard_gce_x86_64
     container:
         cpu: 2
         memory: 2
@@ -170,15 +239,20 @@ centos9_build_task:
 
 success_task:
   alias: "success"
+  gce_instance: *standard_gce_x86_64
   name: "Total success"
   depends_on:
     - "build"
+    - "build_aarch64"
     - "validate"
+    - "validate_aarch64"
     - "verify_vendor"
+    - "verify_vendor_aarch64"
     - "unit"
+    - "unit_aarch64"
     - "integration"
+    - "integration_aarch64"
     - "meta"
-    - "fedora36_build"
     - "ubuntu20_build"
     - "centos9_build"
 

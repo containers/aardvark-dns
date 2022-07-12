@@ -25,5 +25,8 @@ set -x  # show what's happening
 curl --fail --location -o /tmp/netavark.zip "$NETAVARK_URL"
 mkdir -p /usr/libexec/podman
 cd /usr/libexec/podman
-unzip /tmp/netavark.zip
+unzip -o /tmp/netavark.zip
+if [[ $(uname -m) != "x86_64" ]]; then
+    mv netavark.$(uname -m)-unknown-linux-gnu netavark
+fi
 chmod a+x /usr/libexec/podman/netavark
