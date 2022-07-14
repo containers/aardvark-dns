@@ -26,6 +26,8 @@ signal-hook = "0.3.13"
 tokio = { version = "1.19.2", features = ["tokio-macros", "full"] }
 async-broadcast = "0.4.0"
 resolv-conf = "0.7.0"
+nix = "0.23.0"
+libc = "0.2"
 
 [build-dependencies]
 chrono = "0.4.7"
