@@ -75,6 +75,14 @@ build_aarch64_task:
   setup_script: *setup
   main_script: *main
   upload_caches: [ "cargo", "targets", "bin" ]
+  # Downstream CI needs the aarch64 binaries from this CI system.
+  # However, we don't want to confuse architectures.
+  art_prep_script:
+    - cd bin
+    - ln aardvark-dns aardvark-dns.$(uname -m)-unknown-linux-gnu
+    - ln aardvark-dns.debug aardvark-dns.debug.$(uname -m)-unknown-linux-gnu
+  armbinary_artifacts:  # See success_task
+    path: ./bin/aardvark-dns*-unknown-linux-gnu
 
 
 validate_task:
@@ -254,11 +262,15 @@ success_task:
     - "meta"
     - "ubuntu20_build"
     - "centos9_build"
-
+  env:
+    API_URL_BASE: "https://api.cirrus-ci.com/v1/artifact/build/${CIRRUS_BUILD_ID}"
   bin_cache: *ro_bin_cache
   clone_script: *noop
   # The paths used for uploaded artifacts are relative here and in Cirrus
   artifacts_prep_script:
+    - set -x
+    - curl --fail --location -o /tmp/armbinary.zip ${API_URL_BASE}/build_aarch64/armbinary.zip
+    - unzip /tmp/armbinary.zip
     - mv bin/* ./
     - rm -rf bin
   # Upload tested binary for consumption downstream
