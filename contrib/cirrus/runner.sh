@@ -25,7 +25,7 @@ _run_build() {
 
     # This will get scooped up and become part of the artifact archive.
     # Identify where the binary came from to benefit downstream consumers.
-        cat >> bin/aardvark-dns.info << EOF
+        cat | tee bin/aardvark-dns.info << EOF
 repo: $CIRRUS_REPO_CLONE_URL
 branch: $CIRRUS_BASE_BRANCH
 title: $CIRRUS_CHANGE_TITLE
