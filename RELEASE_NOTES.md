@@ -1,10 +1,13 @@
 # Release Notes
 
+## v1.1.0
+* Changed Aardvark to fork on startup to daemonize, as opposed to have this done by callers. This avoids race conditions around startup.
+* Name resolution is now case-insensitive.
+
 ## v1.0.3
 * Updated dependancy libraries
 * Reduction in CPU use
 * Fixed bug with duplicate network names
-
 
 ## v1.0.2
 * Updated dependency libraries
