@@ -108,22 +108,26 @@ pub fn parse_configs(
                     // Container IP addresses
                     let mut new_ctr_ips: Vec<IpAddr> = Vec::new();
                     if let Some(v4) = entry.v4 {
-                        reverse
-                            .entry(network_name.clone())
-                            .or_insert_with(HashMap::new)
-                            .entry(std::net::IpAddr::V4(v4))
-                            .or_insert_with(Vec::new)
-                            .append(&mut entry.aliases.clone());
-                        new_ctr_ips.push(IpAddr::V4(v4));
+                        for ip in v4 {
+                            reverse
+                                .entry(network_name.clone())
+                                .or_insert_with(HashMap::new)
+                                .entry(IpAddr::V4(ip))
+                                .or_insert_with(Vec::new)
+                                .append(&mut entry.aliases.clone());
+                            new_ctr_ips.push(IpAddr::V4(ip));
+                        }
                     }
                     if let Some(v6) = entry.v6 {
-                        reverse
-                            .entry(network_name.clone())
-                            .or_insert_with(HashMap::new)
-                            .entry(std::net::IpAddr::V6(v6))
-                            .or_insert_with(Vec::new)
-                            .append(&mut entry.aliases.clone());
-                        new_ctr_ips.push(IpAddr::V6(v6));
+                        for ip in v6 {
+                            reverse
+                                .entry(network_name.clone())
+                                .or_insert_with(HashMap::new)
+                                .entry(IpAddr::V6(ip))
+                                .or_insert_with(Vec::new)
+                                .append(&mut entry.aliases.clone());
+                            new_ctr_ips.push(IpAddr::V6(ip));
+                        }
                     }
 
                     let ctr_ips = container_ips
@@ -178,8 +182,8 @@ pub fn parse_configs(
 // A single entry in a config file
 struct CtrEntry {
     id: String,
-    v4: Option<Ipv4Addr>,
-    v6: Option<Ipv6Addr>,
+    v4: Option<Vec<Ipv4Addr>>,
+    v6: Option<Vec<Ipv6Addr>>,
     aliases: Vec<String>,
 }
 
@@ -241,9 +245,8 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             ));
         }
 
-        let mut v4_addr: Option<Ipv4Addr> = None;
-        if !parts[1].is_empty() {
-            let ipv4: Ipv4Addr = match parts[1].parse() {
+        let v4_addrs: Option<Vec<Ipv4Addr>> = if !parts[1].is_empty() {
+            let ipv4 = match parts[1].split(',').map(|i| i.parse()).collect() {
                 Ok(i) => i,
                 Err(e) => {
                     return Err(std::io::Error::new(
@@ -252,12 +255,13 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
                     ))
                 }
             };
-            v4_addr = Some(ipv4);
-        }
+            Some(ipv4)
+        } else {
+            None
+        };
 
-        let mut v6_addr: Option<Ipv6Addr> = None;
-        if !parts[2].is_empty() {
-            let ipv6: Ipv6Addr = match parts[2].parse() {
+        let v6_addrs: Option<Vec<Ipv6Addr>> = if !parts[2].is_empty() {
+            let ipv6 = match parts[2].split(',').map(|i| i.parse()).collect() {
                 Ok(i) => i,
                 Err(e) => {
                     return Err(std::io::Error::new(
@@ -266,8 +270,11 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
                     ))
                 }
             };
-            v6_addr = Some(ipv6);
-        }
+            Some(ipv6)
+        } else {
+            None
+        };
+
         let aliases: Vec<String> = parts[3]
             .split(',')
             .map(|x| x.to_string().to_lowercase())
@@ -286,8 +293,8 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
 
         ctrs.push(CtrEntry {
             id: parts[0].to_string().to_lowercase(),
-            v4: v4_addr,
-            v6: v6_addr,
+            v4: v4_addrs,
+            v6: v6_addrs,
             aliases,
         });
     }
