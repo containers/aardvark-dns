@@ -201,27 +201,13 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             continue;
         }
         if is_first {
-            // First line is comma-separated V4 and V6
-            if line.contains(',') {
-                for ip in line.split(',') {
-                    let local_ip = match ip.parse() {
-                        Ok(l) => l,
-                        Err(e) => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("error parsing ip address {}: {}", ip, e),
-                            ))
-                        }
-                    };
-                    bind_addrs.push(local_ip);
-                }
-            } else {
-                let local_ip = match line.parse() {
+            for ip in line.split(',') {
+                let local_ip = match ip.parse() {
                     Ok(l) => l,
                     Err(e) => {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
-                            format!("error parsing ip address {}: {}", line, e),
+                            format!("error parsing ip address {}: {}", ip, e),
                         ))
                     }
                 };
