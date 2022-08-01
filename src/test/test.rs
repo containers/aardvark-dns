@@ -5,6 +5,8 @@
 // following tests will not test server and event loop since
 // event-loop and server can be tested via integration tests
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
     use aardvark_dns::backend::DNSResult;
     use aardvark_dns::config;
     /* -------------------------------------------- */
@@ -433,6 +435,59 @@ mod tests {
                     .contains_key(&"fdfd:733b:dc3:220b::2".parse().unwrap());
                 backend.reverse_mappings["podman_v6_entries"]
                     .contains_key(&"fdfd:733b:dc3:220b::3".parse().unwrap());
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    // Parse a config which contains multiple ipv4 and ipv6 addresses ona single line
+    fn test_parse_multiple_ipv4_ipv6_addresses() {
+        match config::parse_configs("src/test/config/podman_v6_entries") {
+            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
+                assert_eq!(
+                    listen_ip_v4["podman_v6_entries_proper"],
+                    vec![
+                        "10.0.0.1".parse::<Ipv4Addr>().unwrap(),
+                        "10.0.1.1".parse().unwrap()
+                    ]
+                );
+                assert_eq!(
+                    listen_ip_v6["podman_v6_entries_proper"],
+                    vec![
+                        "fdfd::1".parse::<Ipv6Addr>().unwrap(),
+                        "fddd::1".parse().unwrap()
+                    ]
+                );
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti1") {
+                    DNSResult::Success(ip_vec) => {
+                        assert_eq!(
+                            ip_vec,
+                            vec![
+                                "10.0.0.2".parse::<IpAddr>().unwrap(),
+                                "10.0.1.2".parse().unwrap(),
+                                "fdfd::2".parse().unwrap(),
+                                "fddd::2".parse().unwrap()
+                            ]
+                        )
+                    }
+                    _ => panic!("unexpected dns result"),
+                }
+
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti2") {
+                    DNSResult::Success(ip_vec) => {
+                        assert_eq!(
+                            ip_vec,
+                            vec![
+                                "10.0.0.3".parse::<IpAddr>().unwrap(),
+                                "10.0.1.3".parse().unwrap(),
+                                "fdfd::3".parse().unwrap(),
+                                "fddd::3".parse().unwrap()
+                            ]
+                        )
+                    }
+                    _ => panic!("unexpected dns result"),
+                }
             }
             Err(e) => panic!("{}", e),
         }
