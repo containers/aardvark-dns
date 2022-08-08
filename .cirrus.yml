@@ -19,7 +19,7 @@ env:
     NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/github/containers/netavark/success/binary.zip?branch=${NETAVARK_BRANCH}"
     # Save a little typing (path relative to $CIRRUS_WORKING_DIR)
     SCRIPT_BASE: "./contrib/cirrus"
-    IMAGE_SUFFIX: "c4801636756357120"
+    IMAGE_SUFFIX: "c5473162832904192"
     FEDORA_NETAVARK_IMAGE: "fedora-netavark-${IMAGE_SUFFIX}"
 
 
@@ -59,7 +59,7 @@ build_aarch64_task:
   alias: "build_aarch64"
   # Compiling is very CPU intensive, make it chooch quicker for this task only
   ec2_instance: &standard_build_ec2_aarch64
-    image: ami-0f89dfa699fe590b0
+    image: "fedora-netavark-aws-arm64-${IMAGE_SUFFIX}"
     type: t4g.xlarge
     region: us-east-1
     architecture: arm64  # CAUTION: This has to be "arm64", not aarch64.
