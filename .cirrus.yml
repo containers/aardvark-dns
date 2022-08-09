@@ -22,6 +22,7 @@ env:
     IMAGE_SUFFIX: "c5823947156488192"
     FEDORA_NETAVARK_IMAGE: "fedora-netavark-${IMAGE_SUFFIX}"
     FEDORA_NETAVARK_AMI: "fedora-netavark-aws-arm64-${IMAGE_SUFFIX}"
+    EC2_INST_TYPE: "t4g.xlarge"
 
 
 gcp_credentials: ENCRYPTED[f6a0e4101418bec8180783b208721fc990772817364fed0346f5fd126bf0cfca03738dd8c7fb867944637a1eac7cec37]
@@ -61,7 +62,7 @@ build_aarch64_task:
   # Compiling is very CPU intensive, make it chooch quicker for this task only
   ec2_instance: &standard_build_ec2_aarch64
     image: "$FEDORA_NETAVARK_AMI"
-    type: t4g.xlarge
+    type: $EC2_INST_TYPE
     region: us-east-1
     architecture: arm64  # CAUTION: This has to be "arm64", not aarch64.
   cargo_cache: &cargo_cache_aarch64
