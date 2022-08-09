@@ -50,7 +50,7 @@ build: bin $(CARGO_TARGET_DIR)
 .PHONY: clean
 clean:
 	rm -rf bin
-	if [[ "$(CARGO_TARGET_DIR)" == "targets" ]]; then rm -rf targets; fi
+	if [ "$(CARGO_TARGET_DIR)" = "targets" ]; then rm -rf targets; fi
 	$(MAKE) -C docs clean
 
 #.PHONY: docs
@@ -114,7 +114,7 @@ vendor-rm-windows:
 .PHONY: vendor-tarball
 vendor-tarball: build vendor
 	VERSION=$(shell bin/aardvark-dns --version | cut -f2 -d" ") && \
-	[[ $$VERSION == *-dev ]] && echo "version ends with -dev" && exit 1; \
+	case $$VERSION in *-dev) echo "version ends with -dev" && exit 1;; esac; \
 	tar cvf aardvark-dns-v$$VERSION-vendor.tar.gz vendor/ && \
 	gzip -c bin/aardvark-dns > aardvark-dns.gz && \
 	sha256sum aardvark-dns.gz aardvark-dns-v$$VERSION-vendor.tar.gz > sha256sum
