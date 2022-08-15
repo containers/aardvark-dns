@@ -20,7 +20,7 @@ log = "0.4.17"
 trust-dns-server = "0.21.2"
 trust-dns-proto = "0.20.4"
 trust-dns-client = "0.20.4"
-anyhow = "1.0.60"
+anyhow = "1.0.61"
 futures-util = "0.3.23"
 signal-hook = "0.3.13"
 tokio = { version = "1.20.1", features = ["tokio-macros", "full"] }
