@@ -109,6 +109,8 @@ vendor: ## vendor everything into vendor/
 vendor-rm-windows:
 	if [ -d "vendor/winapi" ]; then \
 		rm -fr vendor/winapi*gnu*/lib/*.a; \
+		rm -fr vendor/windows*/lib/*.a; \
+		rm -fr vendor/windows*/lib/*.lib; \
 	fi
 
 .PHONY: vendor-tarball
