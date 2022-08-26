@@ -194,12 +194,10 @@ fn core_serve_loop(
 
             Ok(())
         }
-        Err(e) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("unable to parse config: {}", e),
-            ))
-        }
+        Err(e) => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("unable to parse config: {}", e),
+        )),
     }
 }
 
@@ -229,19 +227,15 @@ async fn start_dns_server(
     {
         Ok(mut server) => match server.run().await {
             Ok(_) => Ok(()),
-            Err(e) => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("unable to start CoreDns server: {}", e),
-                ))
-            }
-        },
-        Err(e) => {
-            return Err(std::io::Error::new(
+            Err(e) => Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
-                format!("unable to create CoreDns server: {}", e),
-            ))
-        }
+                format!("unable to start CoreDns server: {}", e),
+            )),
+        },
+        Err(e) => Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            format!("unable to create CoreDns server: {}", e),
+        )),
     }
 }
 
