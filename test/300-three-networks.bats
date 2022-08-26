@@ -245,10 +245,10 @@ load helpers
 
 	# Verify
 	# b1 should be able to resolve cone through b subnet
-	dig "$a1_pid" "cone" "$b_gw"
+	dig "$a1_pid" "cone" "$b_gw" "AAAA"
 	assert "$b2_ip"
 
 	# a1 should be able to resolve cone
-	dig "$a1_pid" "cone" "$a_gw"
+	dig "$a1_pid" "cone" "$a_gw" "AAAA"
 	assert "$b2_ip"
 }

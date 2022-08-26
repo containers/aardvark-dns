@@ -262,12 +262,10 @@ impl CoreDns {
                                     continue;
                                 }
                             };
-                            if !resolved_ip_list.is_empty()
-                                && (record_type == RecordType::A || record_type == RecordType::AAAA)
-                            {
-                                for record_addr in resolved_ip_list {
-                                    match record_addr {
-                                        IpAddr::V4(ipv4) => {
+                            if !resolved_ip_list.is_empty() {
+                                if record_type == RecordType::A {
+                                    for record_addr in resolved_ip_list {
+                                        if let IpAddr::V4(ipv4) = record_addr {
                                             req.add_answer(
                                                 Record::new()
                                                     .set_name(record_name.clone())
@@ -278,7 +276,10 @@ impl CoreDns {
                                                     .clone(),
                                             );
                                         }
-                                        IpAddr::V6(ipv6) => {
+                                    }
+                                } else if record_type == RecordType::AAAA {
+                                    for record_addr in resolved_ip_list {
+                                        if let IpAddr::V6(ipv6) = record_addr {
                                             req.add_answer(
                                                 Record::new()
                                                     .set_name(record_name.clone())

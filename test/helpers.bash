@@ -558,7 +558,7 @@ function dig() {
     # first arg is container_netns_pid
     # second arg is name
     # third arg is server addr
-    run_in_container_netns "$1" "dig" "+short" "$2" "@$3"
+    run_in_container_netns "$1" "dig" "+short" "$2" "@$3" $4
 }
 
 function dig_reverse() {
