@@ -77,10 +77,10 @@ impl Run {
             }
             Err(err) => {
                 log::debug!("fork failed with error {}", err);
-                return Err(std::io::Error::new(
+                Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
                     format!("fork failed with error: {}", err),
-                ));
+                ))
             }
         }
     }
