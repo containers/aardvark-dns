@@ -340,6 +340,10 @@ fn reply(mut sender: BufStreamHandle, socket_addr: SocketAddr, msg: &Message) ->
     let id = msg.id();
     let mut msg_mut = msg.clone();
     msg_mut.set_message_type(MessageType::Response);
+    // If `RD` is set and `RA` is false set `RA`.
+    if msg.recursion_desired() && !msg.recursion_available() {
+        msg_mut.set_recursion_available(true);
+    }
     let response = SerialMessage::new(msg_mut.to_vec().ok()?, socket_addr);
 
     match sender.send(response) {
