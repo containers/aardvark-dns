@@ -116,7 +116,6 @@ vendor-rm-windows:
 .PHONY: vendor-tarball
 vendor-tarball: build vendor
 	VERSION=$(shell bin/aardvark-dns --version | cut -f2 -d" ") && \
-	case $$VERSION in *-dev) echo "version ends with -dev" && exit 1;; esac; \
 	tar cvf aardvark-dns-v$$VERSION-vendor.tar.gz vendor/ && \
 	gzip -c bin/aardvark-dns > aardvark-dns.gz && \
 	sha256sum aardvark-dns.gz aardvark-dns-v$$VERSION-vendor.tar.gz > sha256sum
