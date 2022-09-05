@@ -17,10 +17,16 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
 	assert "$ip_a1"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 
 	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
 @test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
@@ -49,10 +55,16 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
 	assert "$ip_a1"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 
 	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
 @test "basic container - dns itself with long network name" {
@@ -66,6 +78,9 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
 	assert "$ip_a1"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
 @test "two containers on the same network" {
@@ -88,6 +103,11 @@ load helpers
 	# Resolve container names to IPs
 	dig "$a1_pid" "atwo" "$gw"
 	assert "$a2_ip"
+	# Set recursion bit
+        assert "$output" !~ "WARNING: recursion requested but not available"
 	dig "$a2_pid" "aone" "$gw"
 	assert "$a1_ip"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 }
