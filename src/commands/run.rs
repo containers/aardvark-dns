@@ -62,7 +62,13 @@ impl Run {
                         std::mem::forget(dev_null);
                     }
                 }
-
+                // create aardvark pid and then notify parent
+                if let Err(er) = serve::create_pid(&input_dir) {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("Error creating aardvark pid {}", er),
+                    ));
+                }
                 let mut f = unsafe { File::from_raw_fd(ready_pipe_write) };
                 write!(&mut f, "ready")?;
                 unistd::close(ready_pipe_read)?;

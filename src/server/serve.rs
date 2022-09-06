@@ -24,11 +24,7 @@ struct DNSBackendWithArc {
     pub backend: Arc<DNSBackend>,
 }
 
-pub fn serve(
-    config_path: &str,
-    port: u32,
-    filter_search_domain: &str,
-) -> Result<(), std::io::Error> {
+pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
     // before serving write its pid to _config_path so other process can notify
     // aardvark of data change.
     let path = Path::new(config_path).join(AARDVARK_PID_FILE);
@@ -50,10 +46,14 @@ pub fn serve(
         ));
     }
 
-    // rust closes the fd only when it leaves the scope, since this is
-    // the main loop it will never happen so we have to manually close it
-    drop(pid_file);
+    Ok(())
+}
 
+pub fn serve(
+    config_path: &str,
+    port: u32,
+    filter_search_domain: &str,
+) -> Result<(), std::io::Error> {
     loop {
         if let Err(er) = core_serve_loop(config_path, port, filter_search_domain) {
             return Err(std::io::Error::new(
