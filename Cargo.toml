@@ -18,7 +18,7 @@ clap = { version = "3.2.21", features = ["derive"] }
 syslog = "^6.0"
 log = "0.4.17"
 trust-dns-server = "0.22.0"
-trust-dns-proto = "0.20.4"
+trust-dns-proto = "0.22.0"
 trust-dns-client = "0.20.4"
 anyhow = "1.0.65"
 futures-util = "0.3.24"
