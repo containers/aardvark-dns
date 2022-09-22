@@ -18,7 +18,7 @@ dependencies = [
  "signal-hook",
  "syslog",
  "tokio",
- "trust-dns-client 0.20.4",
+ "trust-dns-client",
  "trust-dns-proto 0.20.4",
  "trust-dns-server",
 ]
@@ -894,26 +894,6 @@ dependencies = [
 
 [[package]]
 name = "trust-dns-client"
-version = "0.20.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b4ef9b9bde0559b78a4abb00339143750085f05e5a453efb7b8bef1061f09dc"
-dependencies = [
- "cfg-if",
- "data-encoding",
- "futures-channel",
- "futures-util",
- "lazy_static",
- "log",
- "radix_trie",
- "rand",
- "thiserror",
- "time 0.3.11",
- "tokio",
- "trust-dns-proto 0.20.4",
-]
-
-[[package]]
-name = "trust-dns-client"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c408c32e6a9dbb38037cece35740f2cf23c875d8ca134d33631cec83f74d3fe"
@@ -1000,7 +980,7 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
- "trust-dns-client 0.22.0",
+ "trust-dns-client",
  "trust-dns-proto 0.22.0",
 ]
 
