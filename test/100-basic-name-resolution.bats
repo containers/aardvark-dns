@@ -53,15 +53,19 @@ load helpers
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
 	create_container "$config_a1"
 	a1_pid=$CONTAINER_NS_PID
-	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
+	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw" "AAAA"
 	assert "$ip_a1"
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
-	# validate that we get an ipv4
-	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw" "AAAA"
+	# validate that we got valid ipv6
+	# check that the output is not empty
+	assert "$lines[0]" != "" "got at least one result"
+	for ip in "${lines[@]}"; do
+		run_helper ipcalc -6c "$ip"
+	done
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
