@@ -1,5 +1,11 @@
 # Release Notes
 
+## v1.2.0
+* coredns: do not combine results of A and AAAA records
+* run,serve: create aardvark pid in child before we notify parent process
+* coredns: response message set recursion available if RD is true
+* document configuration format
+
 ## v1.1.0
 * Changed Aardvark to fork on startup to daemonize, as opposed to have this done by callers. This avoids race conditions around startup.
 * Name resolution is now case-insensitive.
