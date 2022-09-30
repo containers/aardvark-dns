@@ -98,7 +98,6 @@ mock-rpm:
 .PHONY: validate
 validate: $(CARGO_TARGET_DIR)
 	cargo fmt --all -- --check
-	cargo clippy -p aardvark-dns -- -D warnings
 
 .PHONY: vendor
 vendor: ## vendor everything into vendor/
