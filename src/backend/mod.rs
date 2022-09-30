@@ -78,7 +78,7 @@ impl DNSBackend {
             if !name.is_empty() {
                 if let Some(lastchar) = name.chars().last() {
                     if lastchar == '.' {
-                        name = (&name[0..name.len() - 1]).to_string();
+                        name = (name[0..name.len() - 1]).to_string();
                     }
                 }
             }
