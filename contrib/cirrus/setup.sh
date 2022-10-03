@@ -30,3 +30,7 @@ if [[ $(uname -m) != "x86_64" ]]; then
     mv netavark.$(uname -m)-unknown-linux-gnu netavark
 fi
 chmod a+x /usr/libexec/podman/netavark
+
+# Warning, this isn't the end.  An exit-handler is installed to finalize
+# setup of env. vars.  This is required for runner.sh to operate properly.
+# See complete_setup() in lib.sh for details.
