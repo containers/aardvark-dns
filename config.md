@@ -9,7 +9,7 @@ At least one ip must be given.
 
 All following lines must contain the dns entries in this format:
 ```
-[containerID][space][comma sparated ipv4 list][space][comma separated ipv6 list][space][comma separated dns names]
+[containerID][space][comma sparated ipv4 list][space][comma separated ipv6 list][space][comma separated dns names][(optional)[space][comma seperated DNS servers]]
 ```
 
 Aardvark-dns will reload all config files when receiving a SIGHUB signal.
@@ -19,7 +19,7 @@ Aardvark-dns will reload all config files when receiving a SIGHUB signal.
 
 ```
 10.0.0.1,fdfd::1
-f35256b5e2f72ec8cb7d974d4f8841686fc8921fdfbc867285b50164e313f715 10.0.0.2 fdfd::2 testmulti1
+f35256b5e2f72ec8cb7d974d4f8841686fc8921fdfbc867285b50164e313f715 10.0.0.2 fdfd::2 testmulti1 8.8.8.8,1.1.1.1
 e5df0cdbe0136a30cc3e848d495d2cc6dada25b7dedc776b4584ce2cbba6f06f 10.0.0.3 fdfd::3 testmulti2
 ```
 

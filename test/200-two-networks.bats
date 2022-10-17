@@ -10,7 +10,7 @@ load helpers
 
 	# container a1 on subnet a
 	subnet_a=$(random_subnet 5)
-	create_config "podman1" $(random_string 64) "aone" "$subnet_a"
+	create_config "podman1" $(random_string 64) "aone" "$subnet_a" ""
 	a1_config="$config"
 	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
 	a_gw=$(echo "$a1_config" | jq -r .network_info.podman1.subnets[0].gateway)
@@ -19,7 +19,7 @@ load helpers
 
 	# container b1 on subnet b
 	subnet_b=$(random_subnet 5)
-	create_config "podman2" $(random_string 64) "bone" "$subnet_b"
+	create_config "podman2" $(random_string 64) "bone" "$subnet_b" ""
 	b1_config="$config"
 	b1_ip=$(echo "$b1_config" | jq -r .networks.podman2.static_ips[0])
 	b_gw=$(echo "$b1_config" | jq -r .network_info.podman2.subnets[0].gateway)
@@ -56,7 +56,7 @@ load helpers
 	subnet_b=$(random_subnet 5)
 
 	# A1
-	create_config "podman1" $(random_string 64) "aone" "$subnet_a"
+	create_config "podman1" $(random_string 64) "aone" "$subnet_a" ""
 	a1_config=$config
 	a1_container_id=$(echo "$a1_config" | jq -r .container_id)
 	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
@@ -66,7 +66,7 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 
 	# container b1 on subnet b
-	create_config "podman2" $(random_string 64) "bone" "$subnet_b"
+	create_config "podman2" $(random_string 64) "bone" "$subnet_b" ""
 	b1_config=$config
 	b1_ip=$(echo "$b1_config" | jq -r .networks.podman2.static_ips[0])
 	b_gw=$(echo "$b1_config" | jq -r .network_info.podman2.subnets[0].gateway)
@@ -76,7 +76,7 @@ load helpers
 	b_subnets=$(echo $b1_config | jq -r .network_info.podman2.subnets[0])
 
 	# AB2
-	create_config "podman1" $(random_string 64) "abtwo" "$subnet_a"
+	create_config "podman1" $(random_string 64) "abtwo" "$subnet_a" ""
 	a2_config=$config
 	a2_ip=$(echo "$a2_config" | jq -r .networks.podman1.static_ips[0])
 

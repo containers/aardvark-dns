@@ -355,7 +355,8 @@ function run_in_host_netns() {
 # second arg is container_id
 # third is container name
 # fourth is subnet
-# fifth and greater are aliases
+# fifth is custom dns server for container (empty will not be used)
+# sixth and greater are aliases
 function create_config() {
     local network_name=$1
     shift
@@ -366,6 +367,12 @@ function create_config() {
 
     local subnets=""
     local subnet=$1
+    shift
+    local custom_dns_server
+    #local dns_server=$1
+    if [ -n "$1" ]; then
+	    custom_dns_server=\"$1\"
+    fi
     shift
     container_ip=$(random_ip_in_subnet $subnet)
     container_gw=$(gateway_from_subnet $subnet)
@@ -389,7 +396,8 @@ function create_config() {
   },
   "network_info": {
       $new_network_info
-  }
+  },
+  "dns_servers": [$custom_dns_server]
 }\0
 EOF
 

@@ -42,6 +42,7 @@ pub fn parse_configs(
     let mut network_names: HashMap<String, HashMap<String, Vec<IpAddr>>> = HashMap::new();
     let mut listen_ips_4: HashMap<String, Vec<Ipv4Addr>> = HashMap::new();
     let mut listen_ips_6: HashMap<String, Vec<Ipv6Addr>> = HashMap::new();
+    let mut ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>> = HashMap::new();
 
     // Enumerate all files in the directory, read them in one by one.
     // Steadily build a map of what container has what IPs and what
@@ -115,6 +116,7 @@ pub fn parse_configs(
                                 .entry(IpAddr::V4(ip))
                                 .or_insert_with(Vec::new)
                                 .append(&mut entry.aliases.clone());
+                            ctr_dns_server.insert(IpAddr::V4(ip), entry.dns_servers.clone());
                             new_ctr_ips.push(IpAddr::V4(ip));
                         }
                     }
@@ -126,6 +128,7 @@ pub fn parse_configs(
                                 .entry(IpAddr::V6(ip))
                                 .or_insert_with(Vec::new)
                                 .append(&mut entry.aliases.clone());
+                            ctr_dns_server.insert(IpAddr::V6(ip), entry.dns_servers.clone());
                             new_ctr_ips.push(IpAddr::V6(ip));
                         }
                     }
@@ -173,7 +176,7 @@ pub fn parse_configs(
     }
 
     Ok((
-        DNSBackend::new(ctrs, network_names, reverse),
+        DNSBackend::new(ctrs, network_names, reverse, ctr_dns_server),
         listen_ips_4,
         listen_ips_6,
     ))
@@ -185,6 +188,7 @@ struct CtrEntry {
     v4: Option<Vec<Ipv4Addr>>,
     v6: Option<Vec<Ipv6Addr>>,
     aliases: Vec<String>,
+    dns_servers: Option<Vec<IpAddr>>,
 }
 
 // Read and parse a single given configuration file
@@ -220,7 +224,7 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
 
         // Split on space
         let parts = line.split(' ').collect::<Vec<&str>>();
-        if parts.len() != 4 {
+        if parts.len() < 4 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 format!(
@@ -277,11 +281,27 @@ fn parse_config(path: &std::path::Path) -> Result<(Vec<IpAddr>, Vec<CtrEntry>), 
             ));
         }
 
+        let dns_servers: Option<Vec<IpAddr>> = if parts.len() == 5 && !parts[4].is_empty() {
+            let dns_server = match parts[4].split(',').map(|i| i.parse()).collect() {
+                Ok(i) => i,
+                Err(e) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("error parsing DNS server address {}: {}", parts[4], e),
+                    ))
+                }
+            };
+            Some(dns_server)
+        } else {
+            None
+        };
+
         ctrs.push(CtrEntry {
             id: parts[0].to_string().to_lowercase(),
             v4: v4_addrs,
             v6: v6_addrs,
             aliases,
+            dns_servers,
         });
     }
 
