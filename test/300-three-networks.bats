@@ -10,7 +10,7 @@ load helpers
 	subnet_b=$(random_subnet 5)
 
 	# A1
-	create_config "podman1" $(random_string 64) "aone" "$subnet_a" ""
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
 	a1_config=$config
 	a1_container_id=$(echo "$a1_config" | jq -r .container_id)
 	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
@@ -20,7 +20,7 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 
 	# container b1 on subnet b
-	create_config "podman2" $(random_string 64) "bone" "$subnet_b" ""
+	create_config network_name="podman2" container_id=$(random_string 64) container_name="bone" subnet="$subnet_b"
 	b1_config=$config
 	b1_ip=$(echo "$b1_config" | jq -r .networks.podman2.static_ips[0])
 	b_gw=$(echo "$b1_config" | jq -r .network_info.podman2.subnets[0].gateway)
@@ -30,7 +30,7 @@ load helpers
 	b_subnets=$(echo $b1_config | jq -r .network_info.podman2.subnets[0])
 
 	# AB2
-	create_config "podman1" $(random_string 64) "abtwo" "$subnet_a" ""
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="abtwo" subnet="$subnet_a"
 	a2_config=$config
 	a2_ip=$(echo "$a2_config" | jq -r .networks.podman1.static_ips[0])
 
@@ -83,7 +83,7 @@ load helpers
 	subnet_c=$(random_subnet 5)
 
 	# A1 on subnet A
-	create_config "podman1" $(random_string 64) "aone" "$subnet_a" ""
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
 	a1_config=$config
 	a1_container_id=$(echo "$a1_config" | jq -r .container_id)
 	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
@@ -93,7 +93,7 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 
 	# C1 on subnet C
-	create_config "podman3" $(random_string 64) "cone" "$subnet_c" ""
+	create_config network_name="podman3" container_id=$(random_string 64) container_name="cone" subnet="$subnet_c"
 	c1_config=$config
 	c1_container_id=$(echo "$c1_config" | jq -r .container_id)
 	c1_ip=$(echo "$c1_config" | jq -r .networks.podman3.static_ips[0])
@@ -112,7 +112,7 @@ load helpers
 	# the order should be OK.
 
 	# Create B1 config for network connect
-	create_config "podman2" $(random_string 64) "aone" "$subnet_b" "" "aone_nw"
+	create_config network_name="podman2" container_id=$(random_string 64) container_name="aone" subnet="$subnet_b" aliases='"aone_nw"'
 	b1_config=$config
 	# The container ID should be the same
 	b1_config=$(jq ".container_id  |= \"$a1_container_id\"" <<<"$b1_config")
@@ -128,7 +128,7 @@ load helpers
 
 	# Create B2 config for network connect
 	#
-	create_config "podman2" $(random_string 64) "cone" "$subnet_b" "" "cone_nw"
+	create_config network_name="podman2" container_id=$(random_string 64) container_name="cone" subnet="$subnet_b" aliases='"cone_nw"'
 	b2_config=$config
 	# The container ID should be the same
 	b2_config=$(jq ".container_id  |= \"$c1_container_id\"" <<<"$b2_config")
@@ -183,7 +183,7 @@ load helpers
 	subnet_c=$(random_subnet 6)
 
 	# A1 on subnet A
-	create_config "podman1" $(random_string 64) "aone" "$subnet_a" ""
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
 	a1_config=$config
 	a1_container_id=$(echo "$a1_config" | jq -r .container_id)
 	a1_ip=$(echo "$a1_config" | jq -r .networks.podman1.static_ips[0])
@@ -193,7 +193,7 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 
 	# C1 on subnet C
-	create_config "podman3" $(random_string 64) "cone" "$subnet_c" ""
+	create_config network_name="podman3" container_id=$(random_string 64) container_name="cone" subnet="$subnet_c"
 	c1_config=$config
 	c1_container_id=$(echo "$c1_config" | jq -r .container_id)
 	c1_ip=$(echo "$c1_config" | jq -r .networks.podman3.static_ips[0])
@@ -207,7 +207,7 @@ load helpers
 	# a network connect on both to B.
 
 	# Create B1 config for network connect
-	create_config "podman2" $(random_string 64) "aone" "$subnet_b" "" "aone_nw"
+	create_config network_name="podman2" container_id=$(random_string 64) container_name="aone" subnet="$subnet_b" aliases='"aone_nw"'
 	b1_config=$config
 	# The container ID should be the same
 	b1_config=$(jq ".container_id  |= \"$a1_container_id\"" <<<"$b1_config")
@@ -223,7 +223,7 @@ load helpers
 
 	# Create B2 config for network connect
 	#
-	create_config "podman2" $(random_string 64) "cone" "$subnet_b" "" "cone_nw"
+	create_config network_name="podman2" container_id=$(random_string 64) container_name="cone" subnet="$subnet_b" aliases='"cone_nw"'
 	b2_config=$config
 	# The container ID should be the same
 	b2_config=$(jq ".container_id  |= \"$c1_container_id\"" <<<"$b2_config")

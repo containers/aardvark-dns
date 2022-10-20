@@ -351,38 +351,51 @@ function run_in_host_netns() {
 #  create_config#  Creates a config netavark can use
 ################
 #
-# first arg is the network name
-# second arg is container_id
-# third is container name
-# fourth is subnet
-# fifth is custom dns server for container (empty will not be used)
-# sixth and greater are aliases
+# The following arguments are supported, the order does not matter:
+#     network_name=$network_name
+#     container_id=$container_id
+#     container_name=$container_name
+#     subnet=$subnet specifies the network subnet
+#     custom_dns_serve=$custom_dns_server
+#     aliases=$aliases comma seperated container aliases for dns resolution.
 function create_config() {
-    local network_name=$1
-    shift
-    local container_id=$1
-    shift
-    local container_name=$1
-    shift
-
-    local subnets=""
-    local subnet=$1
-    shift
+    local network_name=""
+    local container_id=""
+    local container_name=""
+    local subnet=""
     local custom_dns_server
-    #local dns_server=$1
-    if [ -n "$1" ]; then
-	    custom_dns_server=\"$1\"
-    fi
-    shift
+    local aliases=""
+
+     # parse arguments
+    while [[ "$#" -gt 0 ]]; do
+        IFS='=' read -r arg value <<<"$1"
+        case "$arg" in
+        network_name)
+            network_name="$value"
+            ;;
+        container_id)
+            container_id="$value"
+            ;;
+        container_name)
+            container_name="$value"
+            ;;
+        subnet)
+            subnet="$value"
+            ;;
+        custom_dns_server)
+            custom_dns_server="$value"
+            ;;
+        aliases)
+            aliases="$value"
+            ;;
+        *) die "unknown argument for '$arg' create_config" ;;
+        esac
+        shift
+    done
+
     container_ip=$(random_ip_in_subnet $subnet)
     container_gw=$(gateway_from_subnet $subnet)
     subnets="{\"subnet\":\"$subnet\",\"gateway\":\"$container_gw\"}"
-    aliases=""
-    comma=
-    for i; do
-        aliases+="$comma \"$i\""
-        comma=,
-    done
 
     create_network "$network_name" "$container_ip" "eth0" "$aliases"
     create_network_infos "$network_name" $(random_string 64) "$subnets"
