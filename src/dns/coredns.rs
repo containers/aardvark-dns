@@ -3,6 +3,7 @@ use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use log::{debug, error, trace, warn};
 use resolv_conf;
+use resolv_conf::ScopedIp;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -122,6 +123,7 @@ impl CoreDns {
                     match msg_received {
                         Ok(msg) => {
                             let src_address = msg.addr();
+                            let mut dns_resolver = self.resolv_conf.clone();
                             let sender = sender.clone();
                             let (name, record_type, mut req) = match parse_dns_msg(msg) {
                                 Some((name, record_type, req)) => (name, record_type, req),
@@ -131,6 +133,16 @@ impl CoreDns {
                                 }
                             };
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
+                            if let Some(Some(dns_servers)) = self.backend.ctr_dns_server.get(&src_address.ip()) {
+                                    if !dns_servers.is_empty() {
+                                        let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
+                                        for dns_server in dns_servers.iter() {
+                                            nameservers_scoped.push(ScopedIp::from(*dns_server));
+                                        }
+                                        dns_resolver = resolv_conf::Config::new();
+                                        dns_resolver.nameservers = nameservers_scoped;
+                                    }
+                            }
 
                             // Create debug and trace info for key parameters.
                             trace!("server name: {:?}", self.name.to_ascii());
@@ -302,7 +314,7 @@ impl CoreDns {
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message);
                                 } else {
-                                    let nameservers = self.resolv_conf.nameservers.clone();
+                                    let nameservers = dns_resolver.nameservers.clone();
                                     tokio::spawn(async move {
                                         // forward dns request to hosts's /etc/resolv.conf
                                         for nameserver in nameservers {

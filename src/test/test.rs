@@ -21,6 +21,11 @@ mod tests {
         }
     }
     #[test]
+    // Test loading of config file from directory with custom DNS for containers
+    fn test_loading_config_file_with_dns_servers() {
+        config::parse_configs("src/test/config/podman_custom_dns_servers").unwrap();
+    }
+    #[test]
     // Parse config files from stub data
     fn test_parsing_config_files() {
         match config::parse_configs("src/test/config/podman") {
@@ -40,6 +45,43 @@ mod tests {
             Err(_) => {}
         }
     }
+    /* -------------------------------------------- */
+    // -------Verify backend custom dns server ----
+    /* -------------------------------------------- */
+    #[test]
+    // Backend must populate ctr_dns_servers via custom
+    // DNS servers for container from the aardvark config
+    fn test_backend_custom_dns_server() {
+        match config::parse_configs("src/test/config/podman_custom_dns_servers") {
+            Ok((backend, _, _)) => {
+                // Should contain custom DNS server 8.8.8.8
+                let mut dns_server = backend
+                    .ctr_dns_server
+                    .get(&IpAddr::V4(Ipv4Addr::new(10, 88, 0, 2)));
+                let mut expected_dns_server = IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8));
+                assert_eq!(dns_server.unwrap().clone().unwrap()[0], expected_dns_server);
+
+                // Should contain custom DNS servers 3.3.3.3 and 1.1.1.1
+                dns_server = backend
+                    .ctr_dns_server
+                    .get(&IpAddr::V4(Ipv4Addr::new(10, 88, 0, 5)));
+                expected_dns_server = IpAddr::V4(Ipv4Addr::new(3, 3, 3, 3));
+                assert_eq!(dns_server.unwrap().clone().unwrap()[0], expected_dns_server);
+                expected_dns_server = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+                assert_eq!(dns_server.unwrap().clone().unwrap()[1], expected_dns_server);
+                expected_dns_server = IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1));
+                assert_eq!(dns_server.unwrap().clone().unwrap()[2], expected_dns_server);
+
+                // Shoudld not contain any DNS server
+                dns_server = backend
+                    .ctr_dns_server
+                    .get(&IpAddr::V4(Ipv4Addr::new(10, 88, 0, 3)));
+                assert_eq!(dns_server.unwrap().clone(), None);
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
     /* -------------------------------------------- */
     // -------Test aardvark-dns lookup logic ------
     /* -------------------------------------------- */

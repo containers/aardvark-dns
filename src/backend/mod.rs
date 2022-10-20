@@ -19,8 +19,7 @@ pub struct DNSBackend {
     pub reverse_mappings: HashMap<String, HashMap<IpAddr, Vec<String>>>,
     // Map of IP address to DNS server IPs to service queries not handled
     // directly.
-    // Not implemented in initial version, we will always use host resolvers.
-    //ctr_dns: HashMap<IpAddr, Vec<IpAddr>>,
+    pub ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
 }
 
 pub enum DNSResult {
@@ -42,11 +41,13 @@ impl DNSBackend {
         containers: HashMap<IpAddr, Vec<String>>,
         networks: HashMap<String, HashMap<String, Vec<IpAddr>>>,
         reverse: HashMap<String, HashMap<IpAddr, Vec<String>>>,
+        ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
     ) -> DNSBackend {
         DNSBackend {
             ip_mappings: containers,
             name_mappings: networks,
             reverse_mappings: reverse,
+            ctr_dns_server,
         }
     }
 
