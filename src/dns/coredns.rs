@@ -275,8 +275,9 @@ impl CoreDns {
                                 }
                             };
                             if !resolved_ip_list.is_empty() {
-                                if record_type == RecordType::A {
-                                    for record_addr in resolved_ip_list {
+                                // Append matched IPv4 if request type is `A` or `ANY`.
+                                if record_type == RecordType::A || record_type == RecordType::ANY {
+                                    for record_addr in &resolved_ip_list {
                                         if let IpAddr::V4(ipv4) = record_addr {
                                             req.add_answer(
                                                 Record::new()
@@ -284,13 +285,15 @@ impl CoreDns {
                                                     .set_ttl(86400)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_rdata(RData::A(ipv4))
+                                                    .set_rdata(RData::A(*ipv4))
                                                     .clone(),
                                             );
                                         }
                                     }
-                                } else if record_type == RecordType::AAAA {
-                                    for record_addr in resolved_ip_list {
+                                }
+                                // Append matched IPv6 if request type is `AAAA` or `ANY`.
+                                if record_type == RecordType::AAAA || record_type == RecordType::ANY {
+                                    for record_addr in &resolved_ip_list {
                                         if let IpAddr::V6(ipv6) = record_addr {
                                             req.add_answer(
                                                 Record::new()
@@ -298,7 +301,7 @@ impl CoreDns {
                                                     .set_ttl(86400)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_rdata(RData::AAAA(ipv6))
+                                                    .set_rdata(RData::AAAA(*ipv6))
                                                     .clone(),
                                             );
                                         }
