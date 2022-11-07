@@ -100,26 +100,17 @@ validate: $(CARGO_TARGET_DIR)
 	cargo fmt --all -- --check
 	cargo clippy -p aardvark-dns -- -D warnings
 
-.PHONY: vendor
-vendor: ## vendor everything into vendor/
-	cargo vendor
-	$(MAKE) vendor-rm-windows ## remove windows library if possible
-
-.PHONY: vendor-rm-windows
-vendor-rm-windows:
-	if [ -d "vendor/winapi" ]; then \
-		rm -fr vendor/winapi*gnu*/lib/*.a; \
-		rm -fr vendor/windows*/lib/*.a; \
-		rm -fr vendor/windows*/lib/*.lib; \
-	fi
-
 .PHONY: vendor-tarball
-vendor-tarball: build vendor
+vendor-tarball: build install.cargo-vendor-filterer
 	VERSION=$(shell bin/aardvark-dns --version | cut -f2 -d" ") && \
-	tar cvf aardvark-dns-v$$VERSION-vendor.tar.gz vendor/ && \
+	cargo vendor-filterer '--platform=*-unknown-linux-*' --format=tar.gz --prefix vendor/ && \
+	mv vendor.tar.gz aardvark-dns-v$$VERSION-vendor.tar.gz && \
 	gzip -c bin/aardvark-dns > aardvark-dns.gz && \
 	sha256sum aardvark-dns.gz aardvark-dns-v$$VERSION-vendor.tar.gz > sha256sum
-	rm -rf vendor/
+
+.PHONY: install.cargo-vendor-filterer
+install.cargo-vendor-filterer:
+	cargo install cargo-vendor-filterer
 
 .PHONY: help
 help:
