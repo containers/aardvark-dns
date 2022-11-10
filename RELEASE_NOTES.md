@@ -1,5 +1,8 @@
 # Release Notes
 
+## v1.3.0
+* allow one or more dns servers in the aardvark config
+
 ## v1.2.0
 * coredns: do not combine results of A and AAAA records
 * run,serve: create aardvark pid in child before we notify parent process
