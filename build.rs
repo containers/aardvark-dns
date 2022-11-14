@@ -9,7 +9,7 @@ fn main() {
     // get timestamp
     let now = match env::var("SOURCE_DATE_EPOCH") {
         Ok(val) => {
-            let naive = NaiveDateTime::from_timestamp(val.parse::<i64>().unwrap(), 0);
+            let naive = NaiveDateTime::from_timestamp_opt(val.parse::<i64>().unwrap(), 0).unwrap();
             let datetime: DateTime<Utc> = DateTime::from_utc(naive, Utc);
             datetime
         }
