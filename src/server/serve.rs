@@ -69,7 +69,7 @@ fn core_serve_loop(
     port: u32,
     filter_search_domain: &str,
 ) -> Result<(), std::io::Error> {
-    let mut signals = Signals::new(&[SIGHUP])?;
+    let mut signals = Signals::new([SIGHUP])?;
 
     match config::parse_configs(config_path) {
         Ok((backend, listen_ip_v4, listen_ip_v6)) => {
