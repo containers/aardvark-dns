@@ -133,15 +133,25 @@ impl CoreDns {
                                 }
                             };
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
+                            let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
+                            // Add resolvers configured for container
                             if let Some(Some(dns_servers)) = self.backend.ctr_dns_server.get(&src_address.ip()) {
                                     if !dns_servers.is_empty() {
-                                        let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
                                         for dns_server in dns_servers.iter() {
                                             nameservers_scoped.push(ScopedIp::from(*dns_server));
                                         }
+                                    }
+                            // Add network scoped resolvers only if container specific resolvers were not configured
+                            } else if let Some(network_dns_servers) = self.backend.get_network_scoped_resolvers(&src_address.ip()) {
+                                        for dns_server in network_dns_servers.iter() {
+                                                nameservers_scoped.push(ScopedIp::from(*dns_server));
+                                        }
+                            }
+                            // Override host resolvers with custom resolvers if any  were
+                            // configured for container or network.
+                            if !nameservers_scoped.is_empty() {
                                         dns_resolver = resolv_conf::Config::new();
                                         dns_resolver.nameservers = nameservers_scoped;
-                                    }
                             }
 
                             // Create debug and trace info for key parameters.

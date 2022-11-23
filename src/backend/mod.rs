@@ -20,6 +20,8 @@ pub struct DNSBackend {
     // Map of IP address to DNS server IPs to service queries not handled
     // directly.
     pub ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
+    // Map of network name and DNS server IPs.
+    pub network_dns_server: HashMap<String, Vec<IpAddr>>,
 }
 
 pub enum DNSResult {
@@ -42,12 +44,14 @@ impl DNSBackend {
         networks: HashMap<String, HashMap<String, Vec<IpAddr>>>,
         reverse: HashMap<String, HashMap<IpAddr, Vec<String>>>,
         ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
+        network_dns_server: HashMap<String, Vec<IpAddr>>,
     ) -> DNSBackend {
         DNSBackend {
             ip_mappings: containers,
             name_mappings: networks,
             reverse_mappings: reverse,
             ctr_dns_server,
+            network_dns_server,
         }
     }
 
@@ -93,6 +97,27 @@ impl DNSBackend {
         }
 
         DNSResult::Success(results)
+    }
+
+    // Returns list of network resolvers for a particular container
+    pub fn get_network_scoped_resolvers(&self, requester: &IpAddr) -> Option<Vec<IpAddr>> {
+        let mut results: Vec<IpAddr> = Vec::new();
+
+        match self.ip_mappings.get(requester) {
+            Some(nets) => {
+                for net in nets {
+                    match self.network_dns_server.get(net) {
+                        Some(resolvers) => results.extend_from_slice(resolvers),
+                        None => {
+                            continue;
+                        }
+                    };
+                }
+            }
+            None => return None,
+        };
+
+        Some(results)
     }
 
     /// Return a single name resolved via mapping if it exists.
