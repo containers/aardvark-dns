@@ -1,5 +1,8 @@
 # Release Notes
 
+## v1.4.0
+* Add support for network scoped dns servers; declare DNS at a network level
+
 ## v1.3.0
 * allow one or more dns servers in the aardvark config
 
