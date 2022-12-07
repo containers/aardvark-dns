@@ -16,7 +16,8 @@ env:
     CARGO_TARGET_DIR: "$CIRRUS_WORKING_DIR/targets"
     # Testing depends on the latest netavark binary from upstream CI
     NETAVARK_BRANCH: "main"
-    NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/github/containers/netavark/success/binary.zip?branch=${NETAVARK_BRANCH}"
+      #NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/github/containers/netavark/success/binary.zip?branch=${NETAVARK_BRANCH}"
+    NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/task/5442508335874048/binary.zip"
     # Save a little typing (path relative to $CIRRUS_WORKING_DIR)
     SCRIPT_BASE: "./contrib/cirrus"
     IMAGE_SUFFIX: "c5518085466095616"
