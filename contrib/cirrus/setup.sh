@@ -19,19 +19,26 @@ msg "Setting up runtime environment"
 msg "************************************************************"
 show_env_vars
 
-req_env_vars NETAVARK_URL
-
-set -x  # show what's happening
-curl --fail --location -o /tmp/netavark.zip "$NETAVARK_URL"
-mkdir -p /usr/libexec/podman
+req_env_vars NETAVARK_URL NETAVARK_BRANCH
 cd /usr/libexec/podman
-unzip -o /tmp/netavark.zip
-if [[ $(uname -m) != "x86_64" ]]; then
-    mv netavark.$(uname -m)-unknown-linux-gnu netavark
+rm -vf netavark*
+if showrun curl --fail --location -o /tmp/netavark.zip "$NETAVARK_URL" && \
+   unzip -o /tmp/netavark.zip; then
+
+    if [[ $(uname -m) != "x86_64" ]]; then
+        showrun mv netavark.$(uname -m)-unknown-linux-gnu netavark
+    fi
+    showrun chmod a+x /usr/libexec/podman/netavark
+else
+    warn "Error downloading/extracting the latest pre-compiled netavark binary from CI"
+    showrun cargo install \
+      --root /usr/libexec/podman \
+      --git https://github.com/containers/netavark \
+      --branch "$NETAVARK_BRANCH"
+    showrun mv /usr/libexec/podman/bin/netavark /usr/libexec/podman
 fi
-chmod a+x /usr/libexec/podman/netavark
 # show netavark commit in CI logs
-/usr/libexec/podman/netavark version
+showrun /usr/libexec/podman/netavark version
 
 # Warning, this isn't the end.  An exit-handler is installed to finalize
 # setup of env. vars.  This is required for runner.sh to operate properly.
