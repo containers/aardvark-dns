@@ -28,7 +28,7 @@ pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
     // before serving write its pid to _config_path so other process can notify
     // aardvark of data change.
     let path = Path::new(config_path).join(AARDVARK_PID_FILE);
-    let mut pid_file = match File::create(&path) {
+    let mut pid_file = match File::create(path) {
         Err(err) => {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::Other,
