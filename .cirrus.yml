@@ -41,11 +41,11 @@ build_task:
     image_name: "${FEDORA_NETAVARK_IMAGE}"
   cargo_cache: &cargo_cache
     folder: "$CARGO_HOME"
-    fingerprint_key: "cargo_v1_${DEST_BRANCH}"  # Cache for branch + PRs
+    fingerprint_script: echo -e "cargo_v3_${DEST_BRANCH}_amd64\n---\n$(<Cargo.lock)\n---\n$(<Cargo.toml)"
     reupload_on_changes: true
   targets_cache: &targets_cache
     folder: "$CARGO_TARGET_DIR"
-    fingerprint_key: "targets_v1_${CIRRUS_BUILD_ID}" # Cache only within same build
+    fingerprint_script: echo -e "targets_v3_${CIRRUS_TAG}${DEST_BRANCH}${CIRRUS_PR}_amd64\n---\n$(<Cargo.lock)\n---\n$(<Cargo.toml)"
     reupload_on_changes: true
   bin_cache: &bin_cache
     # This simply prevents rebuilding bin/aardvark-dns* or every subsequent task.
@@ -54,6 +54,8 @@ build_task:
     reupload_on_changes: true
   setup_script: &setup "$SCRIPT_BASE/setup.sh $CIRRUS_TASK_NAME"
   main_script: &main "$SCRIPT_BASE/runner.sh $CIRRUS_TASK_NAME"
+  # N/B: This script comes from `main` on the netavark repo
+  cache_grooming_script: &groom bash "$SCRIPT_BASE/netavark_cache_groom.sh"
   upload_caches: [ "cargo", "targets", "bin" ]
 
 
@@ -67,15 +69,16 @@ build_aarch64_task:
     architecture: arm64  # CAUTION: This has to be "arm64", not aarch64.
   cargo_cache: &cargo_cache_aarch64
     <<: *cargo_cache
-    fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
+    fingerprint_script: echo -e "cargo_v3_${DEST_BRANCH}_aarch64\n---\n$(<Cargo.lock)\n---\n$(<Cargo.toml)"
   targets_cache: &targets_cache_aarch64
     <<: *targets_cache
-    fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
+    fingerprint_script: echo -e "targets_v3_${CIRRUS_TAG}${DEST_BRANCH}${CIRRUS_PR}_aarch64\n---\n$(<Cargo.lock)\n---\n$(<Cargo.toml)"
   bin_cache: &bin_cache_aarch64
     <<: *bin_cache
     fingerprint_key: "cargo_v1_${DEST_BRANCH}_aarch64"
   setup_script: *setup
   main_script: *main
+  cache_grooming_script: *groom
   upload_caches: [ "cargo", "targets", "bin" ]
   # Downstream CI needs the aarch64 binaries from this CI system.
   # However, we don't want to confuse architectures.
