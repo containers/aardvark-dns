@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.5.0
+* dependency updates
+* code of conduct added
+
 ## v1.4.0
 * Add support for network scoped dns servers; declare DNS at a network level
 
