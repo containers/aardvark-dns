@@ -1,5 +1,6 @@
 [package]
 name = "aardvark-dns"
+# This version specification is reused by .packit.sh to generate rpm version
 version = "1.6.0-dev"
 edition = "2018"
 authors = ["github.com/containers"]
