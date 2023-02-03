@@ -116,7 +116,7 @@ validate: $(CARGO_TARGET_DIR)
 .PHONY: vendor-tarball
 vendor-tarball: build install.cargo-vendor-filterer
 	VERSION=$(shell bin/aardvark-dns --version | cut -f2 -d" ") && \
-	cargo vendor-filterer '--platform=*-unknown-linux-*' --format=tar.gz --prefix vendor/ && \
+	cargo vendor-filterer --format=tar.gz --prefix vendor/ && \
 	mv vendor.tar.gz aardvark-dns-v$$VERSION-vendor.tar.gz && \
 	gzip -c bin/aardvark-dns > aardvark-dns.gz && \
 	sha256sum aardvark-dns.gz aardvark-dns-v$$VERSION-vendor.tar.gz > sha256sum
