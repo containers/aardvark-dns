@@ -337,7 +337,7 @@ impl CoreDns {
                                             ));
 
                                             if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
-                                                let _ = tokio::spawn(req_sender);
+                                                tokio::spawn(req_sender);
                                                 if let Some(resp) = forward_dns_req(cl, req.clone()).await {
                                                     if reply(sender.clone(), src_address, &resp).is_some() {
                                                         // request resolved from following resolver so
