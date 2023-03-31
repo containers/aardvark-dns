@@ -21,6 +21,12 @@ use trust_dns_proto::{
     DnsStreamHandle,
 };
 
+// Containers can be recreated with different ips quickly so
+// do not let the clients cache to dns response for to long,
+// aardvark-dns runs on the same host so caching is not that important.
+// see https://github.com/containers/netavark/discussions/644
+const CONTAINER_TTL: u32 = 60;
+
 pub struct CoreDns {
     name: Name,                          // name or origin
     network_name: String,                // raw network name
@@ -212,7 +218,7 @@ impl CoreDns {
                                             if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
                                                 req_clone.add_answer(
                                                     Record::new()
-                                                        .set_ttl(86400)
+                                                        .set_ttl(CONTAINER_TTL)
                                                         .set_rr_type(RecordType::PTR)
                                                         .set_dns_class(DNSClass::IN)
                                                         .set_data(Some(RData::PTR(answer)))
@@ -294,7 +300,7 @@ impl CoreDns {
                                             req.add_answer(
                                                 Record::new()
                                                     .set_name(record_name.clone())
-                                                    .set_ttl(86400)
+                                                    .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
                                                     .set_data(Some(RData::A(ipv4)))
@@ -308,7 +314,7 @@ impl CoreDns {
                                             req.add_answer(
                                                 Record::new()
                                                     .set_name(record_name.clone())
-                                                    .set_ttl(86400)
+                                                    .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
                                                     .set_data(Some(RData::AAAA(ipv6)))
