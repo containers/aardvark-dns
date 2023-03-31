@@ -23,7 +23,7 @@ platforms = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "powerpc64
 
 [dependencies]
 clap = { version = "3.2.23", features = ["derive"] }
-syslog = "^6.0"
+syslog = "^6.0.1"
 log = "0.4.17"
 trust-dns-server = "0.22.0"
 trust-dns-proto = "0.22.0"
