@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.6.0
+* dependency updates
+* lower TTL for containers
+
 ## v1.5.0
 * dependency updates
 * code of conduct added
