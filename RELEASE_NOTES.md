@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.6.0
+* dependency updates
+* lower the TTL to 60s for container names
+
 ## v1.5.0
 * dependency updates
 * code of conduct added
