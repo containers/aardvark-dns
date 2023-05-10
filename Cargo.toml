@@ -31,7 +31,7 @@ trust-dns-client = "0.22.0"
 anyhow = "1.0.71"
 futures-util = { version = "0.3.28", default-features = false }
 signal-hook = "0.3.15"
-tokio = { version = "1.28.0", features = ["macros", "rt-multi-thread", "net"] }
+tokio = { version = "1.28.1", features = ["macros", "rt-multi-thread", "net"] }
 async-broadcast = "0.5.1"
 resolv-conf = "0.7.0"
 nix = "0.26.2"
