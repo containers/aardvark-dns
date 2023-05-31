@@ -38,4 +38,4 @@ nix = "0.26.2"
 libc = "0.2"
 
 [build-dependencies]
-chrono = "0.4.25"
+chrono = "0.4.26"
