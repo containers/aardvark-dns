@@ -19,7 +19,7 @@ env:
     NETAVARK_URL: "https://api.cirrus-ci.com/v1/artifact/github/containers/netavark/success/binary.zip?branch=${NETAVARK_BRANCH}"
     # Save a little typing (path relative to $CIRRUS_WORKING_DIR)
     SCRIPT_BASE: "./contrib/cirrus"
-    IMAGE_SUFFIX: "c20230517t144652z-f38f37d12"
+    IMAGE_SUFFIX: "c20230601t145439z-f38f37d12"
     FEDORA_NETAVARK_IMAGE: "fedora-netavark-${IMAGE_SUFFIX}"
     FEDORA_NETAVARK_AMI: "fedora-netavark-aws-arm64-${IMAGE_SUFFIX}"
     EC2_INST_TYPE: "t4g.xlarge"
