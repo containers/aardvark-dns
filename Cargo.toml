@@ -22,7 +22,7 @@ platforms = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "powerpc64
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.3.0", features = ["derive"] }
+clap = { version = "4.3.1", features = ["derive"] }
 syslog = "^6.1.0"
 log = "0.4.18"
 trust-dns-server = "0.22.1"
