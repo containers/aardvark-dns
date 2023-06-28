@@ -18,30 +18,8 @@
 %global debug_package %{nil}
 %endif
 
-# copr_username is only set on copr environments owned by rhcontainerbot,
-# not on other coprs or environments like koji.
-%if %{defined copr_username} && "%{?copr_username}" == "rhcontainerbot"
-%bcond_without copr
-%else
-%bcond_with copr
-%endif
-
-# rhel 8 does not support %%autochangelog
-%if %{defined rhel} && 0%{?rhel} <= 8
-%bcond_without manual_changelog
-%else
-%bcond_with manual_changelog
-%endif
-
-# rhel does not define %%{golang_arches_future}
-%if %{defined fedora}
-%bcond_without golang_arches_future
-%else
-%bcond_with golang_arches_future
-%endif
-
 Name: aardvark-dns
-%if %{with copr}
+%if %{defined copr_username}
 Epoch: 102
 %endif
 # DO NOT TOUCH the Version string!
@@ -53,7 +31,7 @@ Epoch: 102
 Version: 0
 License: Apache-2.0 and MIT and Zlib
 Release: %autorelease
-%if %{with golang_arches_future}
+%if %{defined golang_arches_future}
 ExclusiveArch: %{golang_arches_future}
 %else
 ExclusiveArch: aarch64 ppc64le s390x x86_64
@@ -67,6 +45,7 @@ BuildRequires: cargo
 BuildRequires: git-core
 BuildRequires: make
 %if %{defined rhel}
+# rust-toolset requires the `local` repo enabled on non-koji ELN build environments
 BuildRequires: rust-toolset
 %else
 BuildRequires: rust-packaging
@@ -86,7 +65,7 @@ Read more about configuration in `src/backend/mod.rs`.
 # Following steps are only required on environments like koji which have no
 # network access and thus depend on the vendored tarball. Copr pulls
 # dependencies directly from the network.
-%if %{without copr}
+%if !%{defined copr_username}
 tar fx %{SOURCE1}
 mkdir -p .cargo
 
@@ -111,12 +90,12 @@ EOF
 %{_libexecdir}/podman/%{name}
 
 %changelog
-%if %{with manual_changelog}
+%if %{defined autochangelog}
+%autochangelog
+%else
 # NOTE: This changelog will be visible on CentOS 8 Stream builds
 # Other envs are capable of handling autochangelog
 * Wed Jun 14 2023 RH Container Bot <rhcontainerbot@fedoraproject.org>
 - Placeholder changelog for envs that are not autochangelog-ready
 - Contact upstream if you need to report an issue with the build.
-%else
-%autochangelog
 %endif
