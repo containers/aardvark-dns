@@ -51,8 +51,6 @@ BuildRequires: rust-toolset
 BuildRequires: rust-packaging
 BuildRequires: rust-srpm-macros
 %endif
-# DO NOT DELETE BELOW LINE - used for updating downstream imports
-# vendored libraries
 
 %description
 %{summary}
