@@ -29,7 +29,8 @@ Epoch: 102
 # copr and koji builds.
 # If you're reading this on dist-git, the version is automatically filled in by Packit.
 Version: 0
-License: Apache-2.0 and MIT and Zlib
+# The `AND` needs to be uppercase in the License for SPDX compatibility
+License: Apache-2.0 AND MIT AND Zlib
 Release: %autorelease
 %if %{defined golang_arches_future}
 ExclusiveArch: %{golang_arches_future}
