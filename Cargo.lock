@@ -19,7 +19,7 @@ dependencies = [
  "syslog",
  "tokio",
  "trust-dns-client",
- "trust-dns-proto 0.22.0",
+ "trust-dns-proto 0.23.0",
  "trust-dns-server",
 ]
 
