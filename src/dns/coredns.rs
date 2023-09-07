@@ -221,7 +221,7 @@ impl CoreDns {
                                                         .set_ttl(CONTAINER_TTL)
                                                         .set_rr_type(RecordType::PTR)
                                                         .set_dns_class(DNSClass::IN)
-                                                        .set_data(Some(RData::PTR(answer)))
+                                                        .set_data(Some(RData::PTR(trust_dns_client::rr::rdata::PTR(answer))))
                                                         .clone(),
                                                 );
                                             }
@@ -303,7 +303,7 @@ impl CoreDns {
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_data(Some(RData::A(ipv4)))
+                                                    .set_data(Some(RData::A(trust_dns_client::rr::rdata::A(ipv4))))
                                                     .clone(),
                                             );
                                         }
@@ -317,7 +317,7 @@ impl CoreDns {
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_data(Some(RData::AAAA(ipv6)))
+                                                    .set_data(Some(RData::AAAA(trust_dns_client::rr::rdata::AAAA(ipv6))))
                                                     .clone(),
                                             );
                                         }
@@ -427,8 +427,7 @@ async fn forward_dns_req(mut cl: AsyncClient, message: Message) -> Option<Messag
     let id = req.id();
 
     match cl.send(req).try_next().await {
-        Ok(Some(mut response)) => {
-            response.set_id(id);
+        Ok(Some(response)) => {
             for answer in response.answers() {
                 debug!(
                     "{} {} {} {} => {:#?}",
@@ -439,7 +438,9 @@ async fn forward_dns_req(mut cl: AsyncClient, message: Message) -> Option<Messag
                     answer.data(),
                 );
             }
-            Some(response.into())
+            let mut response_message = response.into_message();
+            response_message.set_id(id);
+            Some(response_message)
         }
         Ok(None) => {
             error!("{} dns request got empty response", id);
