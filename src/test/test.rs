@@ -96,7 +96,10 @@ mod tests {
     fn test_backend_network_scoped_custom_dns_server() {
         match config::parse_configs("src/test/config/network_scoped_custom_dns") {
             Ok((backend, _, _)) => {
-                let expected_dnsservers = vec!["127.0.0.1", "::0.0.0.2"];
+                let expected_dnsservers = vec![
+                    IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+                    IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 2)),
+                ];
                 let test_cases_source = vec!["10.88.0.2", "10.88.0.3", "10.88.0.4", "10.88.0.5"];
                 // verify if network scoped resolvers for all the containers is equivalent to
                 // expectedDNSServers
@@ -105,7 +108,7 @@ mod tests {
                         backend.get_network_scoped_resolvers(&IpAddr::from_str(container).unwrap());
                     let mut output_dnsservers = Vec::new();
                     for server in output.unwrap().iter() {
-                        output_dnsservers.push(format!("{}", server));
+                        output_dnsservers.push(*server);
                     }
                     assert_eq!(expected_dnsservers, output_dnsservers);
                 }
