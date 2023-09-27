@@ -1,5 +1,8 @@
 # Release Notes
 
+## v1.8.0
+* dependency updates
+
 ## v1.7.0
 * dependency updates
 
