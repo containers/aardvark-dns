@@ -96,20 +96,18 @@ pub fn parse_configs(
                     match ip {
                         IpAddr::V4(a) => listen_ips_4
                             .entry(network_name.clone())
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(a),
                         IpAddr::V6(b) => listen_ips_6
                             .entry(network_name.clone())
-                            .or_insert_with(Vec::new)
+                            .or_default()
                             .push(b),
                     }
                 }
 
                 for entry in parsed_network_config.container_entry {
                     // Container network membership
-                    let ctr_networks = network_membership
-                        .entry(entry.id.clone())
-                        .or_insert_with(Vec::new);
+                    let ctr_networks = network_membership.entry(entry.id.clone()).or_default();
 
                     // Keep the network deduplicated
                     if !ctr_networks.contains(&network_name) {
@@ -122,9 +120,9 @@ pub fn parse_configs(
                         for ip in v4 {
                             reverse
                                 .entry(network_name.clone())
-                                .or_insert_with(HashMap::new)
+                                .or_default()
                                 .entry(IpAddr::V4(ip))
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .append(&mut entry.aliases.clone());
                             ctr_dns_server.insert(IpAddr::V4(ip), entry.dns_servers.clone());
                             new_ctr_ips.push(IpAddr::V4(ip));
@@ -134,26 +132,22 @@ pub fn parse_configs(
                         for ip in v6 {
                             reverse
                                 .entry(network_name.clone())
-                                .or_insert_with(HashMap::new)
+                                .or_default()
                                 .entry(IpAddr::V6(ip))
-                                .or_insert_with(Vec::new)
+                                .or_default()
                                 .append(&mut entry.aliases.clone());
                             ctr_dns_server.insert(IpAddr::V6(ip), entry.dns_servers.clone());
                             new_ctr_ips.push(IpAddr::V6(ip));
                         }
                     }
 
-                    let ctr_ips = container_ips
-                        .entry(entry.id.clone())
-                        .or_insert_with(Vec::new);
+                    let ctr_ips = container_ips.entry(entry.id.clone()).or_default();
                     ctr_ips.append(&mut new_ctr_ips.clone());
 
                     // Network aliases to IPs map.
-                    let network_aliases = network_names
-                        .entry(network_name.clone())
-                        .or_insert_with(HashMap::new);
+                    let network_aliases = network_names.entry(network_name.clone()).or_default();
                     for alias in entry.aliases {
-                        let alias_entries = network_aliases.entry(alias).or_insert_with(Vec::new);
+                        let alias_entries = network_aliases.entry(alias).or_default();
                         alias_entries.append(&mut new_ctr_ips.clone());
                     }
                 }
@@ -169,7 +163,7 @@ pub fn parse_configs(
         match network_membership.get(&ctr_id) {
             Some(s) => {
                 for ip in ips {
-                    let ip_networks = ctrs.entry(ip).or_insert_with(Vec::new);
+                    let ip_networks = ctrs.entry(ip).or_default();
                     ip_networks.append(&mut s.clone());
                 }
             }

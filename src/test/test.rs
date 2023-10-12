@@ -100,7 +100,7 @@ mod tests {
                     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                     IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 2)),
                 ];
-                let test_cases_source = vec!["10.88.0.2", "10.88.0.3", "10.88.0.4", "10.88.0.5"];
+                let test_cases_source = ["10.88.0.2", "10.88.0.3", "10.88.0.4", "10.88.0.5"];
                 // verify if network scoped resolvers for all the containers is equivalent to
                 // expectedDNSServers
                 for container in test_cases_source.iter() {
