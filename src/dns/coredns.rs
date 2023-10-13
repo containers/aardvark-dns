@@ -108,7 +108,7 @@ impl CoreDns {
     async fn register_port(&mut self) -> anyhow::Result<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
 
-        let no_proxy: bool = matches!(env::var("AARDVARK_NO_PROXY"), Ok(_));
+        let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
         // Do we need to serve on tcp anywhere in future ?
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
