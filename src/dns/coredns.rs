@@ -2,6 +2,14 @@ use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
+use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
+use hickory_proto::{
+    op::{Message, MessageType, ResponseCode},
+    rr::{DNSClass, RData, Record, RecordType},
+    udp::{UdpClientStream, UdpStream},
+    xfer::{dns_handle::DnsHandle, BufDnsStreamHandle, DnsRequest},
+    DnsStreamHandle,
+};
 use log::{debug, error, trace, warn};
 use resolv_conf;
 use resolv_conf::ScopedIp;
@@ -12,14 +20,6 @@ use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use tokio::net::UdpSocket;
-use trust_dns_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::Name};
-use trust_dns_proto::{
-    op::{Message, MessageType, ResponseCode},
-    rr::{DNSClass, RData, Record, RecordType},
-    udp::{UdpClientStream, UdpStream},
-    xfer::{dns_handle::DnsHandle, BufDnsStreamHandle, DnsRequest},
-    DnsStreamHandle,
-};
 
 // Containers can be recreated with different ips quickly so
 // do not let the clients cache to dns response for to long,
@@ -221,7 +221,7 @@ impl CoreDns {
                                                         .set_ttl(CONTAINER_TTL)
                                                         .set_rr_type(RecordType::PTR)
                                                         .set_dns_class(DNSClass::IN)
-                                                        .set_data(Some(RData::PTR(trust_dns_client::rr::rdata::PTR(answer))))
+                                                        .set_data(Some(RData::PTR(rdata::PTR(answer))))
                                                         .clone(),
                                                 );
                                             }
@@ -303,7 +303,7 @@ impl CoreDns {
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_data(Some(RData::A(trust_dns_client::rr::rdata::A(ipv4))))
+                                                    .set_data(Some(RData::A(rdata::A(ipv4))))
                                                     .clone(),
                                             );
                                         }
@@ -317,7 +317,7 @@ impl CoreDns {
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
-                                                    .set_data(Some(RData::AAAA(trust_dns_client::rr::rdata::AAAA(ipv6))))
+                                                    .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))))
                                                     .clone(),
                                             );
                                         }
@@ -422,7 +422,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
     }
 }
 
-async fn forward_dns_req(mut cl: AsyncClient, message: Message) -> Option<Message> {
+async fn forward_dns_req(cl: AsyncClient, message: Message) -> Option<Message> {
     let req = DnsRequest::new(message, Default::default());
     let id = req.id();
 

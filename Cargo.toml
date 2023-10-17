@@ -25,9 +25,9 @@ platforms = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "powerpc64
 clap = { version = "~4.3.24", features = ["derive"] }
 syslog = "^6.1.0"
 log = "0.4.20"
-trust-dns-server = "0.23.2"
-trust-dns-proto = "0.23.2"
-trust-dns-client = "0.23.1"
+hickory-server = "0.24.0"
+hickory-proto = "0.24.0"
+hickory-client = "0.24.0"
 anyhow = "1.0.75"
 futures-util = { version = "0.3.29", default-features = false }
 signal-hook = "0.3.17"
