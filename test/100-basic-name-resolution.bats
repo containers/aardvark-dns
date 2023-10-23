@@ -5,14 +5,14 @@
 
 load helpers
 
-# custom DNS server is set to `10.10.10.10` which is invalid DNS server
+# custom DNS server is set to `127.0.0.255` which is invalid DNS server
 # hence all the external request must fail, this test is expected to fail
 # with exit code 124
 @test "basic container - dns itself (custom bad dns server)" {
 	setup_slirp4netns
 
 	subnet_a=$(random_subnet 5)
-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"10.10.10.10"' aliases='"a1", "1a"'
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.0.0.255"' aliases='"a1", "1a"'
 	config_a1=$config
 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
