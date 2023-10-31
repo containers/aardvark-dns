@@ -44,24 +44,22 @@ fn main() {
         Ok(val) => match Level::from_str(&val) {
             Ok(level) => level,
             Err(e) => {
-                eprintln!("failed to parse RUST_LOG level: {}", e);
+                eprintln!("aardvark-dns: failed to parse RUST_LOG level: {}", e);
                 Level::Info
             }
         },
+        // if env is not set default to info
         Err(_) => Level::Info,
     };
 
-    match syslog::unix(formatter) {
-        Ok(logger) => {
-            if let Err(e) = log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
-                .map(|()| log::set_max_level(log_level.to_level_filter()))
-            {
-                eprintln!("failed to initialize syslog logger: {}", e)
-            };
-        }
-        Err(e) => {
-            eprintln!("failed to connect to syslog: {}", e);
-        }
+    // On error do nothing, running on system without syslog is fine and we should not clutter
+    // logs with meaningless errors, https://github.com/containers/podman/issues/19809.
+    if let Ok(logger) = syslog::unix(formatter) {
+        if let Err(e) = log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
+            .map(|()| log::set_max_level(log_level.to_level_filter()))
+        {
+            eprintln!("aardvark-dns: failed to initialize syslog logger: {}", e)
+        };
     }
 
     let opts = Opts::parse();
@@ -79,7 +77,7 @@ fn main() {
     match result {
         Ok(_) => {}
         Err(err) => {
-            println!("{}", err);
+            eprintln!("aardvark-dns: {}", err);
             std::process::exit(1);
         }
     }
