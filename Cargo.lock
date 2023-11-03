@@ -998,9 +998,9 @@ dependencies = [
 
 [[package]]
 name = "trust-dns-client"
-version = "0.23.1"
+version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94e4ad6bd86a9a586340df0fa58180c0ab1b1f6ab0079501378710754ef01853"
+checksum = "14135e72c7e6d4c9b6902d4437881a8598f0145dbb2e3f86f92dbad845b61e63"
 dependencies = [
  "cfg-if",
  "data-encoding",
