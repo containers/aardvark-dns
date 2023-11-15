@@ -33,6 +33,25 @@ jobs:
       - "copr://rhcontainerbot/podman-next"
     enable_net: true
 
+  # Jobs that run on internal testing farm are not run automatically for
+  # external contributors. Having a separate build task for consumption by
+  # internal testing farm tasks decouples the internal testing farm tasks from
+  # the non-internal ones so that non-internal tasks get run automatically.
+  - job: copr_build
+    trigger: pull_request
+    notifications:
+      failure_comment:
+        message: "Ephemeral COPR build failed. @containers/packit-build please check."
+    targets:
+      - epel-8-x86_64
+      - epel-8-aarch64
+      - epel-9-x86_64
+      - epel-9-aarch64
+    additional_repos:
+      - "copr://rhcontainerbot/podman-next"
+    enable_net: true
+    identifier: integration_test_internal
+
   # Run on commit to main branch
   - job: copr_build
     trigger: commit
