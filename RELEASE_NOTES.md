@@ -1,5 +1,10 @@
 # Release Notes
 
+## v1.9.0
+* update trust-dns to hickory
+* never report an error when the syslog init fails
+* dependency updates
+
 ## v1.8.0
 * dependency updates
 
