@@ -18,7 +18,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -33,7 +33,6 @@ pub struct CoreDns {
     address: IpAddr,                     // server address
     port: u32,                           // server port
     backend: Arc<DNSBackend>,            // server's data store
-    kill_switch: Arc<Mutex<bool>>,       // global kill_switch
     filter_search_domain: String,        // filter_search_domain
     rx: async_broadcast::Receiver<bool>, // kill switch receiver
     resolv_conf: resolv_conf::Config,    // host's parsed /etc/resolv.conf
@@ -50,7 +49,6 @@ impl CoreDns {
         forward_addr: IpAddr,
         forward_port: u16,
         backend: Arc<DNSBackend>,
-        kill_switch: Arc<Mutex<bool>>,
         filter_search_domain: String,
         rx: async_broadcast::Receiver<bool>,
     ) -> anyhow::Result<Self> {
@@ -92,7 +90,6 @@ impl CoreDns {
             address,
             port,
             backend,
-            kill_switch,
             filter_search_domain,
             rx,
             resolv_conf,
@@ -173,10 +170,6 @@ impl CoreDns {
                                 self.backend.name_mappings
                             );
                             trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
-                            trace!(
-                                 "server backend kill switch: {:?}",
-                                 self.kill_switch.lock().is_ok()
-                            );
 
 
                             // if record type is PTR try resolving early and return if record found
