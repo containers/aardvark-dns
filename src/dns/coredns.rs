@@ -165,11 +165,11 @@ impl CoreDns {
                             debug!("request source address: {:?}", src_address);
                             trace!("requested record type: {:?}", record_type);
                             debug!("checking if backend has entry for: {:?}", name);
-                            trace!(
+                            error!(
                                 "server backend.name_mappings: {:?}",
                                 self.backend.name_mappings
                             );
-                            trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
+                            error!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
 
 
                             // if record type is PTR try resolving early and return if record found
@@ -228,14 +228,14 @@ impl CoreDns {
                             match self.backend.lookup(&src_address.ip(), name.as_str()) {
                                 // If we go success from backend lookup
                                 DNSResult::Success(_ip_vec) => {
-                                    debug!("Found backend lookup");
+                                    error!("Found backend lookup {_ip_vec:?}");
                                     resolved_ip_list = _ip_vec;
                                 }
                                 // For everything else assume the src_address was not in ip_mappings
                                 _ => {
                                     debug!(
-                                "No backend lookup found, try resolving in current resolvers entry"
-                            );
+                                        "No backend lookup found, try resolving in current resolvers entry"
+                                        );
                                     if let Some(container_mappings) = self.backend.name_mappings.get(&self.network_name) {
                                         for (key, value) in container_mappings {
 

@@ -181,6 +181,9 @@ function assert() {
         ws=$(printf "%*s" ${#op} "")
     fi
 
+    # FIXME debug only
+    journalctl -p 3 -r -n20
+
     # This is a multi-line message, which may in turn contain multi-line
     # output, so let's format it ourself, readably
     local actual_split
