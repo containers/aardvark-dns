@@ -262,15 +262,23 @@ function random_ip_in_subnet() {
     # first trim subnet
     local net_ip=${1%/*}
     local num=
+    local add=$2
     # if ip has colon it is ipv6
     if [[ "$net_ip" == *":"* ]]; then
-        # make sure to not get 0 or 1
-        num=$(printf "%x" $((RANDOM % 65533 + 2)))
+        num=$((RANDOM % 65533 ))
+        # see below
+        num=$((num - num % 10 + add + 2))
+        num=$(printf "%x" $num)
     else
         # if ipv4 we have to trim the final 0
         net_ip=${net_ip%0}
         # make sure to not get 0, 1 or 255
-        num=$(printf "%d" $((RANDOM % 252 + 2)))
+        num=$((RANDOM % 252))
+        # Avoid giving out duplicated ips if we are called more than once.
+        # The caller needs to keep a counter because this is executed ina subshell so we cannot use global var here.
+        # Basically subtract mod 10 then add the counter so we can never get a dup ip assuming counter < 10 which
+        # should always be the case here. Add 2 to avoid using .0 .1 which have special meaning.
+        num=$((num - num % 10 + add + 2))
     fi
     printf "$net_ip%s" $num
 }
@@ -393,7 +401,8 @@ function create_config() {
         shift
     done
 
-    container_ip=$(random_ip_in_subnet $subnet)
+    container_ip=$(random_ip_in_subnet $subnet $IP_COUNT)
+    IP_COUNT=$((IP_COUNT + 1))
     container_gw=$(gateway_from_subnet $subnet)
     subnets="{\"subnet\":\"$subnet\",\"gateway\":\"$container_gw\"}"
 
@@ -517,6 +526,8 @@ function basic_host_setup() {
     # unsetting does not work, it would use the default address
     export DBUS_SYSTEM_BUS_ADDRESS=
     AARDVARK_TMPDIR=$(mktemp -d --tmpdir=${BATS_TMPDIR:-/tmp} aardvark_bats.XXXXXX)
+
+    IP_COUNT=0
 }
 
 function setup_slirp4netns() {
