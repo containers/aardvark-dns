@@ -29,7 +29,7 @@ hickory-server = "0.24.0"
 hickory-proto = "0.24.0"
 hickory-client = "0.24.0"
 anyhow = "1.0.79"
-futures-util = { version = "0.3.29", default-features = false }
+futures-util = { version = "0.3.30", default-features = false }
 signal-hook = "0.3.17"
 tokio = { version = "1.35.1", features = ["macros", "rt-multi-thread", "net"] }
 async-broadcast = "0.6.0"
