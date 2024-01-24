@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.10.0
+* removed unused kill switch
+* updated dependencies
+
 ## v1.9.0
 * update trust-dns to hickory
 * never report an error when the syslog init fails
