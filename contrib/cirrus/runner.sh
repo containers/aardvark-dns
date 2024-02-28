@@ -3,7 +3,7 @@
 set -eo pipefail
 
 # This script runs in the Cirrus CI environment, invoked from .cirrus.yml .
-# It can also be invoked manually in a `hack/get_ci_cm.sh` environment,
+# It can also be invoked manually in a `hack/get_ci_vm.sh` environment,
 # documentation of said usage is TBI.
 #
 # The principal deciding factor is the first argument.  For any
