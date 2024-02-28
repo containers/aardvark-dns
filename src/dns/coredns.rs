@@ -202,7 +202,7 @@ impl CoreDns {
                                     ptr_lookup_ip = String::from("not an ip");
                                 }
 
-                                trace!("Performing lookup reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
+                                trace!("Performing reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
                                 // We should probably log malformed queries, but for now if-let should be fine.
                                 if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
                                     if let Some(reverse_lookup) = self.backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
