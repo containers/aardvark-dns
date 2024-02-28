@@ -211,6 +211,7 @@ impl CoreDns {
                                             if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
                                                 req_clone.add_answer(
                                                     Record::new()
+                                                        .set_name(Name::from_str_relaxed(&name).unwrap_or_default())
                                                         .set_ttl(CONTAINER_TTL)
                                                         .set_rr_type(RecordType::PTR)
                                                         .set_dns_class(DNSClass::IN)
