@@ -597,8 +597,7 @@ function dig_reverse() {
     # first arg is container_netns_pid
     # second arg is the IP address
     # third arg is server addr
-    #run_in_container_netns "$1" "dig" "-x" "$2" "+short" "@$3"
-    run_in_container_netns "$1" "nslookup" "$2" "$3"
+    run_in_container_netns "$1" "dig" "-x" "$2" "@$3"
 }
 
 function setup() {

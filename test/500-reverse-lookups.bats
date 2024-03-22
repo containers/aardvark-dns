@@ -22,18 +22,22 @@ load helpers
 	create_container "$a2_config"
 	a2_pid="$CONTAINER_NS_PID"
 
-	echo "$a1_config"
-	echo "$a2_config"
+	echo "a1 config:\n${a1_config}\n"
+	echo "a2 config:\n${a2_config}\n"
 
 	# Resolve IPs to container names
 	dig_reverse "$a1_pid" "$a2_ip" "$gw"
-	assert "$output" =~ "atwo"
-	assert "$output" =~ "a2"
-	assert "$output" =~ "2a"
+	echo -e "Output:\n${output}\n"
+	a2_expected_name=$(echo $a2_ip | awk -F. '{printf "%d.%d.%d.%d.in-addr.arpa.", $4, $3, $2, $1}')
+	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]atwo\."
+	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]a2\."
+	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]2a\."
 	dig_reverse "$a2_pid" "$a1_ip" "$gw"
-	assert "$output" =~ "aone"
-	assert "$output" =~ "a1"
-	assert "$output" =~ "1a"
+	echo -e "Output:\n${output}\n"
+	a1_expected_name=$(echo $a1_ip | awk -F. '{printf "%d.%d.%d.%d.in-addr.arpa.", $4, $3, $2, $1}')
+	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]aone\."
+	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]a1\."
+	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]1a\."
 }
 
 @test "check reverse lookups on ipaddress v6" {
@@ -57,12 +61,13 @@ load helpers
 	echo "$a2_config"
 
 	# Resolve IPs to container names
+	# It is much harder to construct the arpa address in ipv6 so we just check that we are in the fd::/8 range
 	dig_reverse "$a1_pid" "$a2_ip" "$gw"
-	assert "$output" =~ "atwo"
-	assert "$output" =~ "a2"
-	assert "$output" =~ "2a"
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]atwo\.'
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]a2\.'
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]2a\.'
 	dig_reverse "$a2_pid" "$a1_ip" "$gw"
-	assert "$output" =~ "aone"
-	assert "$output" =~ "a1"
-	assert "$output" =~ "1a"
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]aone\.'
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]a1\.'
+	assert "$output" =~ '([0-9a-f]\.){30}d\.f\.ip6\.arpa\.[ 	].*[ 	]1a\.'
 }
