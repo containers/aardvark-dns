@@ -231,7 +231,7 @@ centos9_build_task:
 success_task:
   alias: "success"
   gce_instance: *standard_gce_x86_64
-  name: "Total success"
+  name: "Total Success"
   depends_on:
     - "build"
     - "build_aarch64"
