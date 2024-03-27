@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use std::env;
 use std::process::Command;
 
@@ -8,11 +8,7 @@ fn main() {
 
     // get timestamp
     let now = match env::var("SOURCE_DATE_EPOCH") {
-        Ok(val) => {
-            let naive = NaiveDateTime::from_timestamp_opt(val.parse::<i64>().unwrap(), 0).unwrap();
-            let datetime: DateTime<Utc> = TimeZone::from_utc_datetime(&Utc, &naive);
-            datetime
-        }
+        Ok(val) => DateTime::from_timestamp(val.parse::<i64>().unwrap(), 0).unwrap(),
         Err(_) => Utc::now(),
     };
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", now.to_rfc3339());
