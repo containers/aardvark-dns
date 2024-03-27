@@ -37,9 +37,9 @@ impl Run {
             Ok(ForkResult::Parent { child, .. }) => {
                 log::debug!("starting aardvark on a child with pid {}", child);
                 // verify aardvark here and block till will start
-                unistd::read(ready_pipe_read, &mut [0_u8; 1])?;
-                unistd::close(ready_pipe_read)?;
-                unistd::close(ready_pipe_write)?;
+                unistd::read(ready_pipe_read.as_raw_fd(), &mut [0_u8; 1])?;
+                unistd::close(ready_pipe_read.as_raw_fd())?;
+                unistd::close(ready_pipe_write.as_raw_fd())?;
                 Ok(())
             }
             Ok(ForkResult::Child) => {
@@ -69,10 +69,10 @@ impl Run {
                         format!("Error creating aardvark pid {}", er),
                     ));
                 }
-                let mut f = unsafe { File::from_raw_fd(ready_pipe_write) };
+                let mut f = unsafe { File::from_raw_fd(ready_pipe_write.as_raw_fd()) };
                 write!(&mut f, "ready")?;
-                unistd::close(ready_pipe_read)?;
-                unistd::close(ready_pipe_write)?;
+                unistd::close(ready_pipe_read.as_raw_fd())?;
+                unistd::close(ready_pipe_write.as_raw_fd())?;
                 if let Err(er) = serve::serve(&input_dir, port, &filter_search_domain) {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
