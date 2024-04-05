@@ -366,6 +366,7 @@ function run_in_host_netns() {
 #     subnet=$subnet specifies the network subnet
 #     custom_dns_serve=$custom_dns_server
 #     aliases=$aliases comma seperated container aliases for dns resolution.
+#     internal={true,false} default is false
 function create_config() {
     local network_name=""
     local container_id=""
@@ -373,6 +374,7 @@ function create_config() {
     local subnet=""
     local custom_dns_server
     local aliases=""
+    local internal=false
 
      # parse arguments
     while [[ "$#" -gt 0 ]]; do
@@ -396,6 +398,9 @@ function create_config() {
         aliases)
             aliases="$value"
             ;;
+        internal)
+            internal="$value"
+            ;;
         *) die "unknown argument for '$arg' create_config" ;;
         esac
         shift
@@ -407,7 +412,7 @@ function create_config() {
     subnets="{\"subnet\":\"$subnet\",\"gateway\":\"$container_gw\"}"
 
     create_network "$network_name" "$container_ip" "eth0" "$aliases"
-    create_network_infos "$network_name" $(random_string 64) "$subnets"
+    create_network_infos "$network_name" $(random_string 64) "$subnets" "$internal"
 
     read -r -d '\0' config <<EOF
 {
@@ -431,13 +436,12 @@ EOF
 # arg1 is network name
 # arg2 network_id
 # arg3 is subnets
+# arg4 is internal
 function create_network_infos() {
     local net_name=$1
-    shift
-    local net_id=$1
-    shift
-    local subnets=$1
-    shift
+    local net_id=$2
+    local subnets=$3
+    local internal=${4:-false}
     local interface_name=${net_name:0:7}
 
     read -r -d '\0' new_network_info <<EOF
@@ -450,7 +454,7 @@ function create_network_infos() {
         $subnets
       ],
       "ipv6_enabled": true,
-      "internal": false,
+      "internal": $internal,
       "dns_enabled": true,
       "ipam_options": {
         "driver": "host-local"

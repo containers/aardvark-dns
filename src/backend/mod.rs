@@ -22,6 +22,8 @@ pub struct DNSBackend {
     pub ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
     // Map of network name and DNS server IPs.
     pub network_dns_server: HashMap<String, Vec<IpAddr>>,
+    // Map of network name to bool (network is/is not internal)
+    pub network_is_internal: HashMap<String, bool>,
 }
 
 pub enum DNSResult {
@@ -45,6 +47,7 @@ impl DNSBackend {
         reverse: HashMap<String, HashMap<IpAddr, Vec<String>>>,
         ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
         network_dns_server: HashMap<String, Vec<IpAddr>>,
+        network_is_internal: HashMap<String, bool>,
     ) -> DNSBackend {
         DNSBackend {
             ip_mappings: containers,
@@ -52,6 +55,7 @@ impl DNSBackend {
             reverse_mappings: reverse,
             ctr_dns_server,
             network_dns_server,
+            network_is_internal,
         }
     }
 
@@ -118,6 +122,31 @@ impl DNSBackend {
         };
 
         Some(results)
+    }
+
+    // Checks if a container is associated with only internal networks.
+    // Returns true if and only if a container is only present in
+    // internal networks.
+    pub fn ctr_is_internal(&self, requester: &IpAddr) -> bool {
+        match self.ip_mappings.get(requester) {
+            Some(nets) => {
+                for net in nets {
+                    match self.network_is_internal.get(net) {
+                        Some(internal) => {
+                            if !internal {
+                                return false;
+                            }
+                        }
+                        None => continue,
+                    }
+                }
+            }
+            // For safety, if we don't know about the IP, assume it's probably
+            // someone on the host asking; let them access DNS.
+            None => return false,
+        }
+
+        true
     }
 
     /// Return a single name resolved via mapping if it exists.

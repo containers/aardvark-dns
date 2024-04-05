@@ -44,6 +44,7 @@ pub fn parse_configs(
     let mut listen_ips_6: HashMap<String, Vec<Ipv6Addr>> = HashMap::new();
     let mut ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>> = HashMap::new();
     let mut network_dns_server: HashMap<String, Vec<IpAddr>> = HashMap::new();
+    let mut network_is_internal: HashMap<String, bool> = HashMap::new();
 
     // Enumerate all files in the directory, read them in one by one.
     // Steadily build a map of what container has what IPs and what
@@ -66,12 +67,20 @@ pub fn parse_configs(
                 }
                 let parsed_network_config = parse_config(cfg.path().as_path())?;
 
+                let mut internal = false;
+
                 let network_name: String = match cfg.path().file_name() {
                     // This isn't *completely* safe, but I do not foresee many
                     // cases where our network names include non-UTF8
                     // characters.
                     Some(s) => match s.to_str() {
-                        Some(st) => st.to_string(),
+                        Some(st) => {
+			    let name_full = st.to_string();
+			    if name_full.ends_with(constants::INTERNAL_SUFFIX) {
+				internal = true;
+			    }
+			    name_full.strip_suffix(constants::INTERNAL_SUFFIX).unwrap_or(&name_full).to_string()
+			},
                         None => return Err(std::io::Error::new(
                             std::io::ErrorKind::Other,
                             format!("configuration file {} name has non-UTF8 characters", s.to_string_lossy()),
@@ -85,11 +94,16 @@ pub fn parse_configs(
 
                 // Network DNS Servers were found while parsing config
                 // lets populate the backend
-                if !parsed_network_config.network_dnsservers.is_empty() {
+                // Only if network is not internal.
+                // If internal, explicitly insert empty list.
+                if !parsed_network_config.network_dnsservers.is_empty() && !internal {
                     network_dns_server.insert(
                         network_name.clone(),
                         parsed_network_config.network_dnsservers,
                     );
+                }
+                if internal {
+                    network_dns_server.insert(network_name.clone(), Vec::new());
                 }
 
                 for ip in parsed_network_config.network_bind_ip {
@@ -124,7 +138,10 @@ pub fn parse_configs(
                                 .entry(IpAddr::V4(ip))
                                 .or_default()
                                 .append(&mut entry.aliases.clone());
-                            ctr_dns_server.insert(IpAddr::V4(ip), entry.dns_servers.clone());
+                            // DNS only accepted on non-internal networks.
+                            if !internal {
+                                ctr_dns_server.insert(IpAddr::V4(ip), entry.dns_servers.clone());
+                            }
                             new_ctr_ips.push(IpAddr::V4(ip));
                         }
                     }
@@ -136,7 +153,10 @@ pub fn parse_configs(
                                 .entry(IpAddr::V6(ip))
                                 .or_default()
                                 .append(&mut entry.aliases.clone());
-                            ctr_dns_server.insert(IpAddr::V6(ip), entry.dns_servers.clone());
+                            // DNS only accepted on non-internal networks.
+                            if !internal {
+                                ctr_dns_server.insert(IpAddr::V6(ip), entry.dns_servers.clone());
+                            }
                             new_ctr_ips.push(IpAddr::V6(ip));
                         }
                     }
@@ -150,6 +170,8 @@ pub fn parse_configs(
                         let alias_entries = network_aliases.entry(alias).or_default();
                         alias_entries.append(&mut new_ctr_ips.clone());
                     }
+
+                    network_is_internal.insert(network_name.clone(), internal);
                 }
             }
             Err(e) => warn!("Error reading config file for server update: {}", e),
@@ -186,6 +208,7 @@ pub fn parse_configs(
             reverse,
             ctr_dns_server,
             network_dns_server,
+            network_is_internal,
         ),
         listen_ips_4,
         listen_ips_6,
