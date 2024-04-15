@@ -38,4 +38,4 @@ nix = { version = "0.28.0", features = ["fs", "signal"] }
 libc = "0.2"
 
 [build-dependencies]
-chrono = "0.4.37"
+chrono = "0.4.38"
