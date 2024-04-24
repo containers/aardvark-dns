@@ -247,7 +247,7 @@ function random_string() {
 # if "6" is given as first argument it will return a "fdx:x:x:x::/64" ipv6 subnet
 function random_subnet() {
     if [[ "$1" == "6" ]]; then
-        printf "fd%x:%x:%x:%x::/64" $((RANDOM % 256)) $((RANDOM % 65535)) $((RANDOM % 65535)) $((RANDOM % 65535))
+        printf "fd%02x:%x:%x:%x::/64" $((RANDOM % 256)) $((RANDOM % 65535)) $((RANDOM % 65535)) $((RANDOM % 65535))
     else
         printf "10.%d.%d.0/24" $((RANDOM % 256)) $((RANDOM % 256))
     fi
