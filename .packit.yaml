@@ -25,8 +25,6 @@ jobs:
       fedora-eln-aarch64:
         additional_repos:
           - "https://kojipkgs.fedoraproject.org/repos/eln-build/latest/aarch64/"
-      epel-8-x86_64: {}
-      epel-8-aarch64: {}
       epel-9-x86_64: {}
       epel-9-aarch64: {}
     additional_repos:
@@ -61,8 +59,6 @@ jobs:
     targets: &pr_test_targets
       - fedora-all-x86_64
       - fedora-all-aarch64
-      - epel-8-x86_64
-      - epel-8-aarch64
       - epel-9-x86_64
       - epel-9-aarch64
     identifier: unit_test
@@ -84,10 +80,6 @@ jobs:
       failure_comment:
         message: "podman e2e tests failed on RHEL. @containers/packit-build please check."
     targets: &pr_test_targets_rhel
-      epel-8-aarch64:
-        distros: [RHEL-8.9.0-Nightly,RHEL-8.10.0-Nightly]
-      epel-8-x86_64:
-        distros: [RHEL-8.9.0-Nightly,RHEL-8.10.0-Nightly]
       epel-9-aarch64:
         distros: [RHEL-9.3.0-Nightly,RHEL-9.4.0-Nightly]
       epel-9-x86_64:
