@@ -2,8 +2,16 @@
 # See the documentation for more information:
 # https://packit.dev/docs/configuration/
 
-specfile_path: rpm/aardvark-dns.spec
+downstream_package_name: aardvark-dns
 upstream_tag_template: v{version}
+
+packages:
+  aardvark-dns-fedora:
+    pkg_tool: fedpkg
+    specfile_path: rpm/aardvark-dns.spec
+  aardvark-dns-centos:
+    pkg_tool: centpkg
+    specfile_path: rpm/aardvark-dns.spec
 
 srpm_build_deps:
   - cargo
@@ -13,7 +21,8 @@ srpm_build_deps:
 jobs:
   - job: copr_build
     trigger: pull_request
-    notifications:
+    packages: [aardvark-dns-fedora]
+    notifications: &copr_build_failure_notification
       failure_comment:
         message: "Ephemeral COPR build failed. @containers/packit-build please check."
     targets:
@@ -25,10 +34,26 @@ jobs:
       fedora-eln-aarch64:
         additional_repos:
           - "https://kojipkgs.fedoraproject.org/repos/eln-build/latest/aarch64/"
-      epel-9-x86_64: {}
-      epel-9-aarch64: {}
-    additional_repos:
-      - "copr://rhcontainerbot/podman-next"
+    enable_net: true
+
+  - job: copr_build
+    trigger: pull_request
+    packages: [aardvark-dns-centos]
+    notifications: *copr_build_failure_notification
+    targets:
+      - centos-stream-9-x86_64
+      - centos-stream-9-aarch64
+      - centos-stream-10-x86_64
+      - centos-stream-10-aarch64
+    enable_net: true
+
+  - job: copr_build
+    trigger: pull_request
+    packages: [aardvark-dns-centos]
+    notifications: *copr_build_failure_notification
+    targets:
+      - epel-9-x86_64
+      - epel-9-aarch64
     enable_net: true
 
   # Run on commit to main branch
@@ -52,57 +77,101 @@ jobs:
     identifier: validate_test
     tmt_plan: "/plans/validate_test"
 
-  # Unit tests
+  # Unit tests on Fedora
   - job: tests
     trigger: pull_request
     skip_build: true
-    targets: &pr_test_targets
+    notifications: &unit_test_failure_notification
+      failure_comment:
+        message: "Unit tests failed. @containers/packit-build please check."
+    targets: &pr_test_targets_fedora
       - fedora-all-x86_64
       - fedora-all-aarch64
-      - epel-9-x86_64
-      - epel-9-aarch64
-    identifier: unit_test
+    identifier: unit_test_fedora
     tmt_plan: "/plans/unit_test"
 
-  # Integration tests
+  # Unit tests on CentOS Stream
   - job: tests
     trigger: pull_request
-    targets: *pr_test_targets
-    identifier: integration_test
-    tmt_plan: "/plans/integration_test"
+    skip_build: true
+    notifications: *unit_test_failure_notification
+    targets: &pr_test_targets_centos
+      - centos-stream-9-x86_64
+      - centos-stream-9-aarch64
+      # TODO: iptables kernel module is not available on rhel10.
+      # Enable these after netavark default is switched to nftables.
+      #- centos-stream-10-x86_64
+      #- centos-stream-10-aarch64
+    identifier: unit_test_centos
+    tmt_plan: "/plans/unit_test"
 
   # Unit tests on RHEL
   - job: tests
     trigger: pull_request
     skip_build: true
+    notifications: *unit_test_failure_notification
     use_internal_tf: true
-    notifications:
-      failure_comment:
-        message: "podman e2e tests failed on RHEL. @containers/packit-build please check."
     targets: &pr_test_targets_rhel
       epel-9-aarch64:
-        distros: [RHEL-9.3.0-Nightly,RHEL-9.4.0-Nightly]
+        distros: [RHEL-9-Nightly,RHEL-9.4.0-Nightly]
       epel-9-x86_64:
-        distros: [RHEL-9.3.0-Nightly,RHEL-9.4.0-Nightly]
-    identifier: unit_test_internal
+        distros: [RHEL-9-Nightly,RHEL-9.4.0-Nightly]
+      # NOTE: Need to use centos-stream-10 until RHEL-10/EPEL-10 copr targets
+      # are available
+      # TODO: iptables kernel module is not available on rhel10.
+      # Enable these after netavark default is switched to nftables.
+      #centos-stream-10-aarch64:
+      #  distros: [RHEL-10-Beta-Nightly]
+      #centos-stream-10-x86_64:
+      #  distros: [RHEL-10-Beta-Nightly]
+    identifier: unit_test_rhel
     tmt_plan: "/plans/unit_test"
+
+  # Integration tests on Fedora
+  - job: tests
+    trigger: pull_request
+    packages: [aardvark-dns-fedora]
+    notifications: &integration_test_failure_notification
+      failure_comment:
+        message: "Integration tests failed. @containers/packit-build please check."
+    targets: *pr_test_targets_fedora
+    identifier: integration_test_fedora
+    tmt_plan: "/plans/integration_test"
+
+  # Integration tests on CentOS Stream
+  - job: tests
+    trigger: pull_request
+    packages: [aardvark-dns-centos]
+    notifications: *integration_test_failure_notification
+    targets: *pr_test_targets_centos
+    identifier: integration_test_centos
+    tmt_plan: "/plans/integration_test"
 
   # Integration tests on RHEL
   - job: tests
     trigger: pull_request
+    packages: [aardvark-dns-centos]
+    notifications: *integration_test_failure_notification
     use_internal_tf: true
-    notifications:
-      failure_comment:
-        message: "podman system tests failed on RHEL. @containers/packit-build please check."
     targets: *pr_test_targets_rhel
-    identifier: integration_test_internal
+    identifier: integration_test_rhel
     tmt_plan: "/plans/integration_test"
 
+  # Sync to Fedora
   - job: propose_downstream
     trigger: release
+    packages: [aardvark-dns-fedora]
     update_release: false
     dist_git_branches:
       - fedora-all
+
+  # Sync to CentOS Stream
+  - job: propose_downstream
+    trigger: release
+    packages: [aardvark-dns-centos]
+    update_release: false
+    dist_git_branches:
+      - c10s
 
   - job: koji_build
     trigger: commit
