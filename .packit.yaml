@@ -12,6 +12,8 @@ packages:
   aardvark-dns-centos:
     pkg_tool: centpkg
     specfile_path: rpm/aardvark-dns.spec
+  aardvark-dns-rhel:
+    specfile_path: rpm/aardvark-dns.spec
 
 srpm_build_deps:
   - cargo
@@ -49,7 +51,7 @@ jobs:
 
   - job: copr_build
     trigger: pull_request
-    packages: [aardvark-dns-centos]
+    packages: [aardvark-dns-rhel]
     notifications: *copr_build_failure_notification
     targets:
       - epel-9-x86_64
@@ -150,7 +152,7 @@ jobs:
   # Integration tests on RHEL
   - job: tests
     trigger: pull_request
-    packages: [aardvark-dns-centos]
+    packages: [aardvark-dns-rhel]
     notifications: *integration_test_failure_notification
     use_internal_tf: true
     targets: *pr_test_targets_rhel
