@@ -101,10 +101,8 @@ jobs:
     targets: &pr_test_targets_centos
       - centos-stream-9-x86_64
       - centos-stream-9-aarch64
-      # TODO: iptables kernel module is not available on rhel10.
-      # Enable these after netavark default is switched to nftables.
-      #- centos-stream-10-x86_64
-      #- centos-stream-10-aarch64
+      - centos-stream-10-x86_64
+      - centos-stream-10-aarch64
     identifier: unit_test_centos
     tmt_plan: "/plans/unit_test"
 
@@ -121,12 +119,10 @@ jobs:
         distros: [RHEL-9-Nightly,RHEL-9.4.0-Nightly]
       # NOTE: Need to use centos-stream-10 until RHEL-10/EPEL-10 copr targets
       # are available
-      # TODO: iptables kernel module is not available on rhel10.
-      # Enable these after netavark default is switched to nftables.
-      #centos-stream-10-aarch64:
-      #  distros: [RHEL-10-Beta-Nightly]
-      #centos-stream-10-x86_64:
-      #  distros: [RHEL-10-Beta-Nightly]
+      centos-stream-10-aarch64:
+        distros: [RHEL-10-Beta-Nightly]
+      centos-stream-10-x86_64:
+        distros: [RHEL-10-Beta-Nightly]
     identifier: unit_test_rhel
     tmt_plan: "/plans/unit_test"
 
