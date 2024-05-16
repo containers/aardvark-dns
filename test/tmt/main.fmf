@@ -1,0 +1,32 @@
+# Only common dependencies that are NOT required to run netavark-tests.sh are
+# specified here. Everything else is in netavark-tests.sh.
+require:
+    - make
+
+adjust:
+    duration: 10m
+    when: arch == aarch64
+
+/validate:
+    tag: upstream
+    summary: Validate test
+    test: make validate
+
+/unit:
+    tag: upstream
+    summary: Unit test
+    test: make unit
+
+/upstream:
+    tag: upstream
+    summary: Run tests on upstream PRs
+    
+    /integration_test:
+        test: bash tests.sh upstream
+
+/downstream:
+    tag: downstream
+    summary: Run tests on downstream bodhi / errata and dist-git PRs
+    
+    /integration_test:
+        test: bash tests.sh
