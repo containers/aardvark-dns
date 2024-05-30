@@ -1,5 +1,10 @@
 # Release Notes
 
+## v1.11.0
+* Do not allow "internal" networks to access DNS
+* On SIGHUP, stop AV threads no longer needed and reload in memory those that are 
+* updated dependencies
+
 ## v1.10.0
 * removed unused kill switch
 * updated dependencies
