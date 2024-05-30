@@ -141,22 +141,22 @@ impl CoreDns {
                             let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
                             // Add resolvers configured for container
                             if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
-                                    if !dns_servers.is_empty() {
-                                        for dns_server in dns_servers.iter() {
-                                            nameservers_scoped.push(ScopedIp::from(*dns_server));
-                                        }
+                                if !dns_servers.is_empty() {
+                                    for dns_server in dns_servers.iter() {
+                                        nameservers_scoped.push(ScopedIp::from(*dns_server));
                                     }
-                            // Add network scoped resolvers only if container specific resolvers were not configured
+                                }
+                                // Add network scoped resolvers only if container specific resolvers were not configured
                             } else if let Some(network_dns_servers) = backend.get_network_scoped_resolvers(&src_address.ip()) {
-                                        for dns_server in network_dns_servers.iter() {
-                                                nameservers_scoped.push(ScopedIp::from(*dns_server));
-                                        }
+                                for dns_server in network_dns_servers.iter() {
+                                    nameservers_scoped.push(ScopedIp::from(*dns_server));
+                                }
                             }
                             // Override host resolvers with custom resolvers if any  were
                             // configured for container or network.
                             if !nameservers_scoped.is_empty() {
-                                        dns_resolver = resolv_conf::Config::new();
-                                        dns_resolver.nameservers = nameservers_scoped;
+                                dns_resolver = resolv_conf::Config::new();
+                                dns_resolver.nameservers = nameservers_scoped;
                             }
 
                             // Create debug and trace info for key parameters.
@@ -321,7 +321,7 @@ impl CoreDns {
                                 debug!("Not found, forwarding dns request for {:?}", name);
                                 let request_name = name.as_str().to_owned();
                                 let filter_search_domain_ndots = self.filter_search_domain.clone() + ".";
-                                if no_proxy || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
+                                if no_proxy || backend.ctr_is_internal(&src_address.ip()) || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message);
