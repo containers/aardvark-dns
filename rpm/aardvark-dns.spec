@@ -58,25 +58,30 @@ Read more about configuration in `src/backend/mod.rs`.
 # dependencies directly from the network.
 %if !%{defined copr_username}
 tar fx %{SOURCE1}
-mkdir -p .cargo
-
-cat >.cargo/config << EOF
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "vendor"
-EOF
+%if 0%{?fedora} || 0%{?rhel} >= 10
+%cargo_prep -v vendor
+%else
+%cargo_prep -V 1
+%endif
 %endif
 
 %build
 %{__make} CARGO="%{__cargo}" build
+%if (0%{?fedora} || 0%{?rhel} >= 10) && !%{defined copr_username}
+%cargo_license_summary
+%{cargo_license} > LICENSE.dependencies
+%cargo_vendor_manifest
+%endif
 
 %install
 %{__make} DESTDIR=%{buildroot} PREFIX=%{_prefix} install
 
 %files
 %license LICENSE
+%if (0%{?fedora} || 0%{?rhel} >= 10) && !%{defined copr_username}
+%license LICENSE.dependencies
+%license cargo-vendor.txt
+%endif
 %dir %{_libexecdir}/podman
 %{_libexecdir}/podman/%{name}
 
