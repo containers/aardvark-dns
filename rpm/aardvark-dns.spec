@@ -13,6 +13,8 @@
 Name: aardvark-dns
 %if %{defined copr_username}
 Epoch: 102
+%else
+Epoch: 2
 %endif
 # DO NOT TOUCH the Version string!
 # The TRUE source of this specfile is:
