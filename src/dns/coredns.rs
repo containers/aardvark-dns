@@ -122,13 +122,15 @@ impl CoreDns {
                             let src_address = msg.addr();
                             let mut dns_resolver = self.resolv_conf.clone();
                             let sender = sender_original.clone().with_remote_addr(src_address);
-                            let (name, record_type, mut req) = match parse_dns_msg(msg) {
+                            let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
                                 Some((name, record_type, req)) => (name, record_type, req),
                                 _ => {
                                     error!("None received while parsing dns message, this is not expected server will ignore this message");
                                     continue;
                                 }
                             };
+                            let request_name_string = request_name.to_string();
+
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
                             let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
                             // Add resolvers configured for container
@@ -155,7 +157,7 @@ impl CoreDns {
                             trace!("server name: {:?}", self.name.to_ascii());
                             debug!("request source address: {:?}", src_address);
                             trace!("requested record type: {:?}", record_type);
-                            debug!("checking if backend has entry for: {:?}", name);
+                            debug!("checking if backend has entry for: {:?}", &request_name_string);
                             trace!(
                                 "server backend.name_mappings: {:?}",
                                 backend.name_mappings
@@ -165,14 +167,14 @@ impl CoreDns {
 
                             // if record type is PTR try resolving early and return if record found
                             if record_type == RecordType::PTR {
-                                if let Some(msg) = reply_ptr(&name, &backend, src_address, &req) {
+                                if let Some(msg) = reply_ptr(&request_name_string, &backend, src_address, &req) {
                                     reply(sender, src_address, &msg);
                                     continue;
                                 }
                             }
 
                             // attempt intra network resolution
-                            match backend.lookup(&src_address.ip(), name.as_str()) {
+                            match backend.lookup(&src_address.ip(), &request_name_string) {
                                 // If we go success from backend lookup
                                 DNSResult::Success(_ip_vec) => {
                                     debug!("Found backend lookup");
@@ -183,27 +185,19 @@ impl CoreDns {
                                 _ => {
                                     debug!("No backend lookup found, try resolving in current resolvers entry");
                                     if let Some(container_mappings) = backend.name_mappings.get(&self.network_name) {
-                                        if let Some(ips) = container_mappings.get(&name) {
+                                        if let Some(ips) = container_mappings.get(&request_name_string) {
                                             resolved_ip_list.clone_from(ips);
                                         }
                                     }
                                 }
                             }
-                            let record_name: Name = match Name::from_str_relaxed(name.as_str()) {
-                                Ok(name) => name,
-                                Err(e) => {
-                                    // log and continue server
-                                    error!("Error while parsing record name: {:?}", e);
-                                    continue;
-                                }
-                            };
                             if !resolved_ip_list.is_empty() {
                                 if record_type == RecordType::A {
                                     for record_addr in resolved_ip_list {
                                         if let IpAddr::V4(ipv4) = record_addr {
                                             req.add_answer(
                                                 Record::new()
-                                                    .set_name(record_name.clone())
+                                                    .set_name(request_name.clone())
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
@@ -217,7 +211,7 @@ impl CoreDns {
                                         if let IpAddr::V6(ipv6) = record_addr {
                                             req.add_answer(
                                                 Record::new()
-                                                    .set_name(record_name.clone())
+                                                    .set_name(request_name.clone())
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
@@ -229,10 +223,9 @@ impl CoreDns {
                                 }
                                 reply(sender, src_address, &req);
                             } else {
-                                debug!("Not found, forwarding dns request for {:?}", name);
-                                let request_name = name.as_str().to_owned();
+                                debug!("Not found, forwarding dns request for {:?}", &request_name_string);
                                 if no_proxy || backend.ctr_is_internal(&src_address.ip()) ||
-                                    request_name.ends_with(&backend.search_domain) || request_name.matches('.').count() == 1  {
+                                    request_name_string.ends_with(&backend.search_domain) || request_name_string.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message);
@@ -294,10 +287,10 @@ fn reply(mut sender: BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message)
     Some(())
 }
 
-fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
+fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
     match Message::from_vec(body.bytes()) {
         Ok(msg) => {
-            let mut name: String = "".to_string();
+            let mut name = Name::default();
             let mut record_type: RecordType = RecordType::A;
 
             let parsed_msg = format!(
@@ -306,7 +299,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
                 msg.queries()
                     .first()
                     .map(|q| {
-                        name = q.name().to_string();
+                        name = q.name().clone();
                         record_type = q.query_type();
 
                         format!("{} {} {}", q.name(), q.query_type(), q.query_class(),)
