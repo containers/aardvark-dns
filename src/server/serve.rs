@@ -63,7 +63,8 @@ pub fn serve(
 ) -> Result<(), std::io::Error> {
     let mut signals = Signals::new([SIGHUP])?;
 
-    let (backend, mut listen_ip_v4, mut listen_ip_v6) = parse_configs(config_path)?;
+    let (backend, mut listen_ip_v4, mut listen_ip_v6) =
+        parse_configs(config_path, filter_search_domain)?;
 
     // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
     // reloaded.
@@ -95,21 +96,9 @@ pub fn serve(
             process::exit(0);
         }
 
-        stop_and_start_threads(
-            port,
-            filter_search_domain,
-            backend,
-            listen_ip_v4,
-            &mut handles_v4,
-        );
+        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4);
 
-        stop_and_start_threads(
-            port,
-            filter_search_domain,
-            backend,
-            listen_ip_v6,
-            &mut handles_v6,
-        );
+        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6);
 
         // Block until we receive a SIGHUP.
         loop {
@@ -118,15 +107,16 @@ pub fn serve(
             }
         }
 
-        let (new_backend, new_listen_ip_v4, new_listen_ip_v6) = parse_configs(config_path)?;
+        let (new_backend, new_listen_ip_v4, new_listen_ip_v6) =
+            parse_configs(config_path, filter_search_domain)?;
         backend.store(Arc::new(new_backend));
         listen_ip_v4 = new_listen_ip_v4;
         listen_ip_v6 = new_listen_ip_v6;
     }
 }
 
-fn parse_configs(config_path: &str) -> Result<Config, std::io::Error> {
-    config::parse_configs(config_path).map_err(|e| {
+fn parse_configs(config_path: &str, filter_search_domain: &str) -> Result<Config, std::io::Error> {
+    config::parse_configs(config_path, filter_search_domain).map_err(|e| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
             format!("unable to parse config: {}", e),
@@ -140,7 +130,6 @@ fn parse_configs(config_path: &str) -> Result<Config, std::io::Error> {
 /// corresponding to listen IPs that were added.
 fn stop_and_start_threads<Ip>(
     port: u32,
-    filter_search_domain: &str,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
@@ -173,16 +162,8 @@ fn stop_and_start_threads<Ip>(
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
-        let filter_search_domain = filter_search_domain.to_owned();
         let handle = thread::spawn(move || {
-            if let Err(e) = start_dns_server(
-                network_name_,
-                ip.into(),
-                backend,
-                port,
-                filter_search_domain,
-                shutdown_rx,
-            ) {
+            if let Err(e) = start_dns_server(network_name_, ip.into(), backend, port, shutdown_rx) {
                 error!("Unable to start server: {}", e);
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -227,22 +208,9 @@ async fn start_dns_server(
     addr: IpAddr,
     backend: &'static ArcSwap<DNSBackend>,
     port: u32,
-    filter_search_domain: String,
     rx: flume::Receiver<()>,
 ) -> Result<(), std::io::Error> {
-    let forward: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-    match CoreDns::new(
-        addr,
-        port,
-        name,
-        forward,
-        53_u16,
-        backend,
-        filter_search_domain,
-        rx,
-    )
-    .await
-    {
+    match CoreDns::new(addr, port, name, backend, rx).await {
         Ok(mut server) => match server.run().await {
             Ok(_) => Ok(()),
             Err(e) => Err(std::io::Error::new(

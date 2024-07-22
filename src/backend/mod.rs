@@ -24,6 +24,9 @@ pub struct DNSBackend {
     pub network_dns_server: HashMap<String, Vec<IpAddr>>,
     // Map of network name to bool (network is/is not internal)
     pub network_is_internal: HashMap<String, bool>,
+
+    // search_domain used by aardvark-dns
+    pub search_domain: String,
 }
 
 pub enum DNSResult {
@@ -48,7 +51,14 @@ impl DNSBackend {
         ctr_dns_server: HashMap<IpAddr, Option<Vec<IpAddr>>>,
         network_dns_server: HashMap<String, Vec<IpAddr>>,
         network_is_internal: HashMap<String, bool>,
+        mut search_domain: String,
     ) -> DNSBackend {
+        // dns request always end with dot so append one for easier compare later
+        if let Some(c) = search_domain.chars().rev().nth(0) {
+            if c != '.' {
+                search_domain.push('.')
+            }
+        }
         DNSBackend {
             ip_mappings: containers,
             name_mappings: networks,
@@ -56,6 +66,7 @@ impl DNSBackend {
             ctr_dns_server,
             network_dns_server,
             network_is_internal,
+            search_domain,
         }
     }
 
@@ -68,6 +79,14 @@ impl DNSBackend {
     pub fn lookup(&self, requester: &IpAddr, entry: &str) -> DNSResult {
         // Normalize lookup entry to lowercase.
         let mut name = entry.to_lowercase();
+
+        // Trim off configured search domain if needed as keys do not contain it.
+        // There doesn't seem to be a nicer way to do that:
+        // https://users.rust-lang.org/t/can-strip-suffix-mutate-a-string-value/86852
+        if name.ends_with(&self.search_domain) {
+            name.truncate(name.len() - self.search_domain.len())
+        }
+
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
             None => return DNSResult::NoSuchIP,

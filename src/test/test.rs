@@ -5,37 +5,49 @@
 // following tests will not test server and event loop since
 // event-loop and server can be tested via integration tests
 mod tests {
+    use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-    use aardvark_dns::backend::DNSResult;
+    use aardvark_dns::backend::{DNSBackend, DNSResult};
     use aardvark_dns::config;
     use std::str::FromStr;
+
+    fn parse_configs(
+        dir: &str,
+    ) -> Result<
+        (
+            DNSBackend,
+            HashMap<String, Vec<Ipv4Addr>>,
+            HashMap<String, Vec<Ipv6Addr>>,
+        ),
+        std::io::Error,
+    > {
+        config::parse_configs(dir, "")
+    }
+
     /* -------------------------------------------- */
     // --------- Test aardvark-dns config ---------
     /* -------------------------------------------- */
     #[test]
     // Test loading of config file from directory
     fn test_loading_config_file() {
-        match config::parse_configs("src/test/config/podman") {
-            Ok(_) => {}
-            Err(e) => panic!("{}", e),
-        }
+        parse_configs("src/test/config/podman").unwrap();
     }
     #[test]
     // Test loading of config file from directory with custom DNS for containers
     fn test_loading_config_file_with_dns_servers() {
-        config::parse_configs("src/test/config/podman_custom_dns_servers").unwrap();
+        parse_configs("src/test/config/podman_custom_dns_servers").unwrap();
     }
     #[test]
     // Test loading of config file from directory with custom DNS for containers
     // and custom DNS servers at network level as well.
     fn test_loading_config_file_with_network_scoped_dns_servers() {
-        config::parse_configs("src/test/config/network_scoped_custom_dns").unwrap();
+        parse_configs("src/test/config/network_scoped_custom_dns").unwrap();
     }
     #[test]
     // Parse config files from stub data
     fn test_parsing_config_files() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((_, listen_ip_v4, _)) => {
                 listen_ip_v4.contains_key("podman");
                 assert_eq!(listen_ip_v4["podman"].len(), 1);
@@ -47,7 +59,7 @@ mod tests {
     #[test]
     // Parse bad config files must fail
     fn test_parsing_bad_config_files() {
-        match config::parse_configs("src/test/config/podman_bad_config") {
+        match parse_configs("src/test/config/podman_bad_config") {
             Ok((_, _, _)) => panic!("parsing bad config must fail"),
             Err(_) => {}
         }
@@ -59,7 +71,7 @@ mod tests {
     // Backend must populate ctr_dns_servers via custom
     // DNS servers for container from the aardvark config
     fn test_backend_custom_dns_server() {
-        match config::parse_configs("src/test/config/podman_custom_dns_servers") {
+        match parse_configs("src/test/config/podman_custom_dns_servers") {
             Ok((backend, _, _)) => {
                 // Should contain custom DNS server 8.8.8.8
                 let mut dns_server = backend
@@ -94,7 +106,7 @@ mod tests {
     // DNS servers for container from container entry and
     // network dns servers as well.
     fn test_backend_network_scoped_custom_dns_server() {
-        match config::parse_configs("src/test/config/network_scoped_custom_dns") {
+        match parse_configs("src/test/config/network_scoped_custom_dns") {
             Ok((backend, _, _)) => {
                 let expected_dnsservers = vec![
                     IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
@@ -127,7 +139,7 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend.lookup(&"10.88.0.2".parse().unwrap(), "condescendingnash") {
                     DNSResult::Success(ip_vec) => {
@@ -148,7 +160,7 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive(
     ) {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend.lookup(&"10.88.0.2".parse().unwrap(), "helloworld") {
                     DNSResult::Success(ip_vec) => {
@@ -169,7 +181,7 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive_uppercase(
     ) {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend.lookup(&"10.88.0.2".parse().unwrap(), "HELLOWORLD") {
                     DNSResult::Success(ip_vec) => {
@@ -186,7 +198,7 @@ mod tests {
     // Check lookup query from backend and simulate
     // nx_domain on bad lookup queries.
     fn test_lookup_queries_from_backend_simulate_nx_domain() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend.lookup(&"10.88.0.2".parse().unwrap(), "somebadquery") {
                     DNSResult::NXDomain => {}
@@ -203,7 +215,7 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) different container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend.lookup(&"10.88.0.2".parse().unwrap(), "trustingzhukovsky") {
                     DNSResult::Success(ip_vec) => {
@@ -223,7 +235,7 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) different container name by alias --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4_by_alias() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => match backend.lookup(&"10.88.0.2".parse().unwrap(), "ctr1") {
                 DNSResult::Success(ip_vec) => {
                     // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
@@ -243,7 +255,7 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v6_and_v4_entries(
     ) {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -268,7 +280,7 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v6_on_v6_and_v4_entries(
     ) {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -293,7 +305,7 @@ mod tests {
     // Same container --> (resolve) different container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v6_on_v6_and_v4_entries(
     ) {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -318,7 +330,7 @@ mod tests {
     // Same container --> (resolve) different container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4_on_v6_and_v4_entries(
     ) {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -343,7 +355,7 @@ mod tests {
     // Same container --> (resolve) different container by id --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_by_id_from_v4_on_v6_and_v4_entries(
     ) {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -369,7 +381,7 @@ mod tests {
     // aardvark must return container name and alias
     // Same container --> (resolve) Same ip  --> (on) Same Network
     fn test_reverse_lookup_queries_from_backend_by_ip_v4() {
-        match config::parse_configs("src/test/config/podman") {
+        match parse_configs("src/test/config/podman") {
             Ok((backend, _, _)) => {
                 match backend
                     .reverse_lookup(&"10.88.0.4".parse().unwrap(), &"10.88.0.4".parse().unwrap())
@@ -396,7 +408,7 @@ mod tests {
     // aardvark must return container name and alias
     // Same container --> (resolve) Same ip  --> (on) Same Network
     fn test_reverse_lookup_queries_from_backend_by_ip_v6() {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, _, _)) => {
                 match backend.reverse_lookup(
                     &"fdfd:733b:dc3:220b::2".parse().unwrap(),
@@ -420,7 +432,7 @@ mod tests {
     #[test]
     // Check ip_mappings generated by backend
     fn test_generated_ip_mappings_in_backend() {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -445,7 +457,7 @@ mod tests {
     #[test]
     // Check name_mappings generated by backend
     fn test_generated_name_mappings_in_backend() {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -499,7 +511,7 @@ mod tests {
     #[test]
     // Check reverse_mappings generated by backend
     fn test_generated_reverse_mappings_in_backend() {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 listen_ip_v6.contains_key("podman_v6_entries");
                 listen_ip_v4.contains_key("podman_v6_entries");
@@ -520,7 +532,7 @@ mod tests {
     #[test]
     // Parse a config which contains multiple ipv4 and ipv6 addresses ona single line
     fn test_parse_multiple_ipv4_ipv6_addresses() {
-        match config::parse_configs("src/test/config/podman_v6_entries") {
+        match parse_configs("src/test/config/podman_v6_entries") {
             Ok((backend, listen_ip_v4, listen_ip_v6)) => {
                 assert_eq!(
                     listen_ip_v4["podman_v6_entries_proper"],

@@ -60,7 +60,23 @@ load helpers
 	# abtwo should be able to resolve A1, B1, and AB2 on both gws
 	dig "$ab2_pid" "aone" "$a_gw"
 	assert "$a1_ip"
+	dig "$ab2_pid" "aone" "$b_gw"
+	assert "$a1_ip"
+
+	dig "$ab2_pid" "bone" "$a_gw"
+	assert "$b1_ip"
 	dig "$ab2_pid" "bone" "$b_gw"
+	assert "$b1_ip"
+
+	# now the same again with search domain set
+	dig "$ab2_pid" "aone.dns.podman" "$a_gw"
+	assert "$a1_ip"
+	dig "$ab2_pid" "aone.dns.podman" "$b_gw"
+	assert "$a1_ip"
+
+	dig "$ab2_pid" "bone.dns.podman" "$a_gw"
+	assert "$b1_ip"
+	dig "$ab2_pid" "bone.dns.podman" "$b_gw"
 	assert "$b1_ip"
 
 	# check ab2 from itself, first from the a side

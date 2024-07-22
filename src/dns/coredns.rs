@@ -1,6 +1,7 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use arc_swap::ArcSwap;
+use arc_swap::Guard;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
@@ -19,6 +20,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -33,7 +35,6 @@ pub struct CoreDns {
     address: IpAddr,                       // server address
     port: u32,                             // server port
     backend: &'static ArcSwap<DNSBackend>, // server's data store
-    filter_search_domain: String,          // filter_search_domain
     rx: flume::Receiver<()>,               // kill switch receiver
     resolv_conf: resolv_conf::Config,      // host's parsed /etc/resolv.conf
 }
@@ -46,10 +47,7 @@ impl CoreDns {
         address: IpAddr,
         port: u32,
         network_name: String,
-        forward_addr: IpAddr,
-        forward_port: u16,
         backend: &'static ArcSwap<DNSBackend>,
-        filter_search_domain: String,
         rx: flume::Receiver<()>,
     ) -> anyhow::Result<Self> {
         // this does not have to be unique, if we fail getting server name later
@@ -67,11 +65,6 @@ impl CoreDns {
             name = n;
         }
 
-        debug!(
-            "Will Forward dns requests to udp://{:?}:{}",
-            forward_addr, forward_port,
-        );
-
         let mut resolv_conf: resolv_conf::Config = resolv_conf::Config::new();
         let mut buf = Vec::with_capacity(4096);
         if let Ok(mut f) = File::open("/etc/resolv.conf") {
@@ -88,7 +81,6 @@ impl CoreDns {
             address,
             port,
             backend,
-            filter_search_domain,
             rx,
             resolv_conf,
         })
@@ -130,13 +122,15 @@ impl CoreDns {
                             let src_address = msg.addr();
                             let mut dns_resolver = self.resolv_conf.clone();
                             let sender = sender_original.clone().with_remote_addr(src_address);
-                            let (name, record_type, mut req) = match parse_dns_msg(msg) {
+                            let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
                                 Some((name, record_type, req)) => (name, record_type, req),
                                 _ => {
                                     error!("None received while parsing dns message, this is not expected server will ignore this message");
                                     continue;
                                 }
                             };
+                            let request_name_string = request_name.to_string();
+
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
                             let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
                             // Add resolvers configured for container
@@ -163,7 +157,7 @@ impl CoreDns {
                             trace!("server name: {:?}", self.name.to_ascii());
                             debug!("request source address: {:?}", src_address);
                             trace!("requested record type: {:?}", record_type);
-                            debug!("checking if backend has entry for: {:?}", name);
+                            debug!("checking if backend has entry for: {:?}", &request_name_string);
                             trace!(
                                 "server backend.name_mappings: {:?}",
                                 backend.name_mappings
@@ -173,126 +167,37 @@ impl CoreDns {
 
                             // if record type is PTR try resolving early and return if record found
                             if record_type == RecordType::PTR {
-                                let mut ptr_lookup_ip: String;
-                                // Are we IPv4 or IPv6?
-                                if name.contains(".in-addr.arpa.") {
-                                    // IPv4
-                                    ptr_lookup_ip = name.trim_end_matches(".in-addr.arpa.").split('.').rev().collect::<Vec<&str>>().join(".");
-                                } else if name.contains(".ip6.arpa.") {
-                                    // IPv6
-                                    ptr_lookup_ip = name.trim_end_matches(".ip6.arpa.").split('.').rev().collect::<String>();
-                                    // We removed all periods; now we need to insert a : every 4 characters.
-                                    // split_off() reduces the original string to 4 characters and returns the remainder.
-                                    // So append the 4-character and continue going until we run out of characters.
-                                    let mut split: Vec<String> = Vec::new();
-                                    while ptr_lookup_ip.len() > 4 {
-                                        let tmp = ptr_lookup_ip.split_off(4);
-                                        split.push(ptr_lookup_ip);
-                                        ptr_lookup_ip = tmp;
-                                    }
-                                    // Length should be equal to 4 here, but just use > 0 for safety.
-                                    if !ptr_lookup_ip.is_empty() {
-                                        split.push(ptr_lookup_ip);
-                                    }
-                                    ptr_lookup_ip = split.join(":");
-                                } else {
-                                    // Not a valid address, so force parse() to fail
-                                    // TODO: this is ugly and I don't like it
-                                    ptr_lookup_ip = String::from("not an ip");
+                                if let Some(msg) = reply_ptr(&request_name_string, &backend, src_address, &req) {
+                                    reply(sender, src_address, &msg);
+                                    continue;
                                 }
-
-                                trace!("Performing reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
-                                // We should probably log malformed queries, but for now if-let should be fine.
-                                if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
-                                    if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
-                                        let mut req_clone = req.clone();
-                                        for entry in reverse_lookup {
-                                            if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
-                                                req_clone.add_answer(
-                                                    Record::new()
-                                                        .set_name(Name::from_str_relaxed(&name).unwrap_or_default())
-                                                        .set_ttl(CONTAINER_TTL)
-                                                        .set_rr_type(RecordType::PTR)
-                                                        .set_dns_class(DNSClass::IN)
-                                                        .set_data(Some(RData::PTR(rdata::PTR(answer))))
-                                                        .clone(),
-                                                );
-                                            }
-                                        }
-                                        reply(sender.clone(), src_address, &req_clone);
-                                    }
-                                };
                             }
 
                             // attempt intra network resolution
-                            match backend.lookup(&src_address.ip(), name.as_str()) {
+                            match backend.lookup(&src_address.ip(), &request_name_string) {
                                 // If we go success from backend lookup
                                 DNSResult::Success(_ip_vec) => {
                                     debug!("Found backend lookup");
                                     resolved_ip_list = _ip_vec;
+
                                 }
                                 // For everything else assume the src_address was not in ip_mappings
                                 _ => {
-                                    debug!(
-                                "No backend lookup found, try resolving in current resolvers entry"
-                            );
+                                    debug!("No backend lookup found, try resolving in current resolvers entry");
                                     if let Some(container_mappings) = backend.name_mappings.get(&self.network_name) {
-                                        for (key, value) in container_mappings {
-
-                                            // if query contains search domain, strip it out.
-                                            // Why? This is a workaround so aardvark works well
-                                            // with setup which was created for dnsname/dnsmasq
-
-                                            let mut request_name = name.as_str().to_owned();
-                                            let mut filter_domain_ndots_complete = self.filter_search_domain.to_owned();
-                                            filter_domain_ndots_complete.push('.');
-
-                                            if request_name.ends_with(&self.filter_search_domain) {
-                                                request_name = match request_name.strip_suffix(&self.filter_search_domain) {
-                                                    Some(value) => value.to_string(),
-                                                     _ => {
-                                                        error!("Unable to parse string suffix, ignore parsing this request");
-                                                        continue;
-                                                    }
-                                                };
-                                                request_name.push('.');
-                                            }
-                                            if request_name.ends_with(&filter_domain_ndots_complete) {
-                                                request_name = match request_name.strip_suffix(&filter_domain_ndots_complete) {
-                                                    Some(value) => value.to_string(),
-                                                     _ => {
-                                                        error!("Unable to parse string suffix, ignore parsing this request");
-                                                        continue;
-                                                    }
-                                                };
-                                                request_name.push('.');
-                                            }
-
-                                            // convert key to fully qualified domain name
-                                            let mut key_fqdn = key.to_owned();
-                                            key_fqdn.push('.');
-                                            if key_fqdn == request_name {
-                                                resolved_ip_list = value.to_vec();
-                                            }
+                                        if let Some(ips) = container_mappings.get(&request_name_string) {
+                                            resolved_ip_list.clone_from(ips);
                                         }
                                     }
                                 }
                             }
-                            let record_name: Name = match Name::from_str_relaxed(name.as_str()) {
-                                Ok(name) => name,
-                                Err(e) => {
-                                    // log and continue server
-                                    error!("Error while parsing record name: {:?}", e);
-                                    continue;
-                                }
-                            };
                             if !resolved_ip_list.is_empty() {
                                 if record_type == RecordType::A {
                                     for record_addr in resolved_ip_list {
                                         if let IpAddr::V4(ipv4) = record_addr {
                                             req.add_answer(
                                                 Record::new()
-                                                    .set_name(record_name.clone())
+                                                    .set_name(request_name.clone())
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::A)
                                                     .set_dns_class(DNSClass::IN)
@@ -306,7 +211,7 @@ impl CoreDns {
                                         if let IpAddr::V6(ipv6) = record_addr {
                                             req.add_answer(
                                                 Record::new()
-                                                    .set_name(record_name.clone())
+                                                    .set_name(request_name.clone())
                                                     .set_ttl(CONTAINER_TTL)
                                                     .set_rr_type(RecordType::AAAA)
                                                     .set_dns_class(DNSClass::IN)
@@ -318,10 +223,9 @@ impl CoreDns {
                                 }
                                 reply(sender, src_address, &req);
                             } else {
-                                debug!("Not found, forwarding dns request for {:?}", name);
-                                let request_name = name.as_str().to_owned();
-                                let filter_search_domain_ndots = self.filter_search_domain.clone() + ".";
-                                if no_proxy || backend.ctr_is_internal(&src_address.ip()) || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
+                                debug!("Not found, forwarding dns request for {:?}", &request_name_string);
+                                if no_proxy || backend.ctr_is_internal(&src_address.ip()) ||
+                                    request_name_string.ends_with(&backend.search_domain) || request_name_string.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message);
@@ -383,10 +287,10 @@ fn reply(mut sender: BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message)
     Some(())
 }
 
-fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
+fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
     match Message::from_vec(body.bytes()) {
         Ok(msg) => {
-            let mut name: String = "".to_string();
+            let mut name = Name::default();
             let mut record_type: RecordType = RecordType::A;
 
             let parsed_msg = format!(
@@ -395,7 +299,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(String, RecordType, Message)> {
                 msg.queries()
                     .first()
                     .map(|q| {
-                        name = q.name().to_string();
+                        name = q.name().clone();
                         record_type = q.query_type();
 
                         format!("{} {} {}", q.name(), q.query_type(), q.query_class(),)
@@ -444,4 +348,61 @@ async fn forward_dns_req(cl: AsyncClient, message: Message) -> Option<Message> {
             None
         }
     }
+}
+
+fn reply_ptr(
+    name: &str,
+    backend: &Guard<Arc<DNSBackend>>,
+    src_address: SocketAddr,
+    req: &Message,
+) -> Option<Message> {
+    let ptr_lookup_ip: String;
+    // Are we IPv4 or IPv6?
+
+    match name.strip_suffix(".in-addr.arpa.") {
+        Some(n) => ptr_lookup_ip = n.split('.').rev().collect::<Vec<&str>>().join("."),
+        None => {
+            // not ipv4
+            match name.strip_suffix(".ip6.arpa.") {
+                Some(n) => {
+                    // ipv6 string is 39 chars max
+                    let mut tmp_ip = String::with_capacity(40);
+                    for (i, c) in n.split('.').rev().enumerate() {
+                        tmp_ip.push_str(c);
+                        // insert colon after 4 hex chars but not at the end
+                        if i % 4 == 3 && i < 31 {
+                            tmp_ip.push(':');
+                        }
+                    }
+                    ptr_lookup_ip = tmp_ip;
+                }
+                // neither ipv4 or ipv6, something we do not understand
+                None => return None,
+            }
+        }
+    }
+
+    trace!("Performing reverse lookup for ip: {}", &ptr_lookup_ip);
+
+    // We should probably log malformed queries, but for now if-let should be fine.
+    if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
+        if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
+            let mut req_clone = req.clone();
+            for entry in reverse_lookup {
+                if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
+                    req_clone.add_answer(
+                        Record::new()
+                            .set_name(Name::from_str_relaxed(name).unwrap_or_default())
+                            .set_ttl(CONTAINER_TTL)
+                            .set_rr_type(RecordType::PTR)
+                            .set_dns_class(DNSClass::IN)
+                            .set_data(Some(RData::PTR(rdata::PTR(answer))))
+                            .clone(),
+                    );
+                }
+            }
+            return Some(req_clone);
+        }
+    };
+    None
 }

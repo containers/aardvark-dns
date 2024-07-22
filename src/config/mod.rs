@@ -21,6 +21,7 @@ pub mod constants;
 #[allow(clippy::type_complexity)]
 pub fn parse_configs(
     dir: &str,
+    filter_search_domain: &str,
 ) -> Result<
     (
         DNSBackend,
@@ -209,6 +210,7 @@ pub fn parse_configs(
             ctr_dns_server,
             network_dns_server,
             network_is_internal,
+            filter_search_domain.to_owned(),
         ),
         listen_ips_4,
         listen_ips_6,
