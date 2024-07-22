@@ -16,7 +16,6 @@ use log::{debug, error, trace, warn};
 use resolv_conf;
 use resolv_conf::ScopedIp;
 use std::convert::TryInto;
-use std::env;
 use std::fs::File;
 use std::io::Error;
 use std::io::Read;
@@ -38,6 +37,7 @@ pub struct CoreDns {
     backend: &'static ArcSwap<DNSBackend>, // server's data store
     rx: flume::Receiver<()>,               // kill switch receiver
     resolv_conf: resolv_conf::Config,      // host's parsed /etc/resolv.conf
+    no_proxy: bool,                        // do not forward to external resolvers
 }
 
 impl CoreDns {
@@ -50,6 +50,7 @@ impl CoreDns {
         network_name: String,
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
+        no_proxy: bool,
     ) -> anyhow::Result<Self> {
         // this does not have to be unique, if we fail getting server name later
         // start with empty name
@@ -84,6 +85,7 @@ impl CoreDns {
             backend,
             rx,
             resolv_conf,
+            no_proxy,
         })
     }
 
@@ -95,8 +97,6 @@ impl CoreDns {
     // registers port supports udp for now
     async fn register_port(&mut self) -> anyhow::Result<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
-
-        let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
         // Do we need to serve on tcp anywhere in future ?
         let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
@@ -117,7 +117,7 @@ impl CoreDns {
                             continue;
                         }
                     };
-                    self.process_message(msg_received, &sender_original, no_proxy);
+                    self.process_message(msg_received, &sender_original);
                 },
             }
         }
@@ -128,7 +128,6 @@ impl CoreDns {
         &self,
         msg_received: Result<SerialMessage, Error>,
         sender_original: &BufDnsStreamHandle,
-        no_proxy: bool,
     ) {
         match msg_received {
             Ok(msg) => {
@@ -244,7 +243,7 @@ impl CoreDns {
                         "Not found, forwarding dns request for {:?}",
                         &request_name_string
                     );
-                    if no_proxy
+                    if self.no_proxy
                         || backend.ctr_is_internal(&src_address.ip())
                         || request_name_string.ends_with(&backend.search_domain)
                         || request_name_string.matches('.').count() == 1

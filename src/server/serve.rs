@@ -8,6 +8,7 @@ use signal_hook::consts::signal::SIGHUP;
 use signal_hook::iterator::Signals;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::hash::Hash;
 use std::net::IpAddr;
@@ -62,6 +63,7 @@ pub fn serve(
     filter_search_domain: &str,
 ) -> Result<(), std::io::Error> {
     let mut signals = Signals::new([SIGHUP])?;
+    let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
     let (backend, mut listen_ip_v4, mut listen_ip_v6) =
         parse_configs(config_path, filter_search_domain)?;
@@ -96,9 +98,9 @@ pub fn serve(
             process::exit(0);
         }
 
-        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4);
+        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4, no_proxy);
 
-        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6);
+        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6, no_proxy);
 
         // Block until we receive a SIGHUP.
         loop {
@@ -133,6 +135,7 @@ fn stop_and_start_threads<Ip>(
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
+    no_proxy: bool,
 ) where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
 {
@@ -163,7 +166,14 @@ fn stop_and_start_threads<Ip>(
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
         let handle = thread::spawn(move || {
-            if let Err(e) = start_dns_server(network_name_, ip.into(), backend, port, shutdown_rx) {
+            if let Err(e) = start_dns_server(
+                network_name_,
+                ip.into(),
+                backend,
+                port,
+                shutdown_rx,
+                no_proxy,
+            ) {
                 error!("Unable to start server: {}", e);
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::Other,
@@ -209,8 +219,9 @@ async fn start_dns_server(
     backend: &'static ArcSwap<DNSBackend>,
     port: u32,
     rx: flume::Receiver<()>,
+    no_proxy: bool,
 ) -> Result<(), std::io::Error> {
-    match CoreDns::new(addr, port, name, backend, rx).await {
+    match CoreDns::new(addr, port, name, backend, rx, no_proxy).await {
         Ok(mut server) => match server.run().await {
             Ok(_) => Ok(()),
             Err(e) => Err(std::io::Error::new(
