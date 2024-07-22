@@ -1,6 +1,7 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
 use arc_swap::ArcSwap;
+use arc_swap::Guard;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
@@ -19,6 +20,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
+use std::sync::Arc;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -173,55 +175,10 @@ impl CoreDns {
 
                             // if record type is PTR try resolving early and return if record found
                             if record_type == RecordType::PTR {
-                                let mut ptr_lookup_ip: String;
-                                // Are we IPv4 or IPv6?
-                                if name.contains(".in-addr.arpa.") {
-                                    // IPv4
-                                    ptr_lookup_ip = name.trim_end_matches(".in-addr.arpa.").split('.').rev().collect::<Vec<&str>>().join(".");
-                                } else if name.contains(".ip6.arpa.") {
-                                    // IPv6
-                                    ptr_lookup_ip = name.trim_end_matches(".ip6.arpa.").split('.').rev().collect::<String>();
-                                    // We removed all periods; now we need to insert a : every 4 characters.
-                                    // split_off() reduces the original string to 4 characters and returns the remainder.
-                                    // So append the 4-character and continue going until we run out of characters.
-                                    let mut split: Vec<String> = Vec::new();
-                                    while ptr_lookup_ip.len() > 4 {
-                                        let tmp = ptr_lookup_ip.split_off(4);
-                                        split.push(ptr_lookup_ip);
-                                        ptr_lookup_ip = tmp;
-                                    }
-                                    // Length should be equal to 4 here, but just use > 0 for safety.
-                                    if !ptr_lookup_ip.is_empty() {
-                                        split.push(ptr_lookup_ip);
-                                    }
-                                    ptr_lookup_ip = split.join(":");
-                                } else {
-                                    // Not a valid address, so force parse() to fail
-                                    // TODO: this is ugly and I don't like it
-                                    ptr_lookup_ip = String::from("not an ip");
+                                if let Some(msg) = reply_ptr(&name, &backend, src_address, &req) {
+                                    reply(sender, src_address, &msg);
+                                    continue;
                                 }
-
-                                trace!("Performing reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
-                                // We should probably log malformed queries, but for now if-let should be fine.
-                                if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
-                                    if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
-                                        let mut req_clone = req.clone();
-                                        for entry in reverse_lookup {
-                                            if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
-                                                req_clone.add_answer(
-                                                    Record::new()
-                                                        .set_name(Name::from_str_relaxed(&name).unwrap_or_default())
-                                                        .set_ttl(CONTAINER_TTL)
-                                                        .set_rr_type(RecordType::PTR)
-                                                        .set_dns_class(DNSClass::IN)
-                                                        .set_data(Some(RData::PTR(rdata::PTR(answer))))
-                                                        .clone(),
-                                                );
-                                            }
-                                        }
-                                        reply(sender.clone(), src_address, &req_clone);
-                                    }
-                                };
                             }
 
                             // attempt intra network resolution
@@ -444,4 +401,61 @@ async fn forward_dns_req(cl: AsyncClient, message: Message) -> Option<Message> {
             None
         }
     }
+}
+
+fn reply_ptr(
+    name: &str,
+    backend: &Guard<Arc<DNSBackend>>,
+    src_address: SocketAddr,
+    req: &Message,
+) -> Option<Message> {
+    let ptr_lookup_ip: String;
+    // Are we IPv4 or IPv6?
+
+    match name.strip_suffix(".in-addr.arpa.") {
+        Some(n) => ptr_lookup_ip = n.split('.').rev().collect::<Vec<&str>>().join("."),
+        None => {
+            // not ipv4
+            match name.strip_suffix(".ip6.arpa.") {
+                Some(n) => {
+                    // ipv6 string is 39 chars max
+                    let mut tmp_ip = String::with_capacity(40);
+                    for (i, c) in n.split('.').rev().enumerate() {
+                        tmp_ip.push_str(c);
+                        // insert colon after 4 hex chars but not at the end
+                        if i % 4 == 3 && i < 31 {
+                            tmp_ip.push(':');
+                        }
+                    }
+                    ptr_lookup_ip = tmp_ip;
+                }
+                // neither ipv4 or ipv6, something we do not understand
+                None => return None,
+            }
+        }
+    }
+
+    trace!("Performing reverse lookup for ip: {}", &ptr_lookup_ip);
+
+    // We should probably log malformed queries, but for now if-let should be fine.
+    if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
+        if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
+            let mut req_clone = req.clone();
+            for entry in reverse_lookup {
+                if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
+                    req_clone.add_answer(
+                        Record::new()
+                            .set_name(Name::from_str_relaxed(name).unwrap_or_default())
+                            .set_ttl(CONTAINER_TTL)
+                            .set_rr_type(RecordType::PTR)
+                            .set_dns_class(DNSClass::IN)
+                            .set_data(Some(RData::PTR(rdata::PTR(answer))))
+                            .clone(),
+                    );
+                }
+            }
+            return Some(req_clone);
+        }
+    };
+    None
 }
