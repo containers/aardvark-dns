@@ -35,7 +35,6 @@ pub struct CoreDns {
     address: IpAddr,                       // server address
     port: u32,                             // server port
     backend: &'static ArcSwap<DNSBackend>, // server's data store
-    filter_search_domain: String,          // filter_search_domain
     rx: flume::Receiver<()>,               // kill switch receiver
     resolv_conf: resolv_conf::Config,      // host's parsed /etc/resolv.conf
 }
@@ -51,7 +50,6 @@ impl CoreDns {
         forward_addr: IpAddr,
         forward_port: u16,
         backend: &'static ArcSwap<DNSBackend>,
-        filter_search_domain: String,
         rx: flume::Receiver<()>,
     ) -> anyhow::Result<Self> {
         // this does not have to be unique, if we fail getting server name later
@@ -90,7 +88,6 @@ impl CoreDns {
             address,
             port,
             backend,
-            filter_search_domain,
             rx,
             resolv_conf,
         })
@@ -187,50 +184,14 @@ impl CoreDns {
                                 DNSResult::Success(_ip_vec) => {
                                     debug!("Found backend lookup");
                                     resolved_ip_list = _ip_vec;
+
                                 }
                                 // For everything else assume the src_address was not in ip_mappings
                                 _ => {
-                                    debug!(
-                                "No backend lookup found, try resolving in current resolvers entry"
-                            );
+                                    debug!("No backend lookup found, try resolving in current resolvers entry");
                                     if let Some(container_mappings) = backend.name_mappings.get(&self.network_name) {
-                                        for (key, value) in container_mappings {
-
-                                            // if query contains search domain, strip it out.
-                                            // Why? This is a workaround so aardvark works well
-                                            // with setup which was created for dnsname/dnsmasq
-
-                                            let mut request_name = name.as_str().to_owned();
-                                            let mut filter_domain_ndots_complete = self.filter_search_domain.to_owned();
-                                            filter_domain_ndots_complete.push('.');
-
-                                            if request_name.ends_with(&self.filter_search_domain) {
-                                                request_name = match request_name.strip_suffix(&self.filter_search_domain) {
-                                                    Some(value) => value.to_string(),
-                                                     _ => {
-                                                        error!("Unable to parse string suffix, ignore parsing this request");
-                                                        continue;
-                                                    }
-                                                };
-                                                request_name.push('.');
-                                            }
-                                            if request_name.ends_with(&filter_domain_ndots_complete) {
-                                                request_name = match request_name.strip_suffix(&filter_domain_ndots_complete) {
-                                                    Some(value) => value.to_string(),
-                                                     _ => {
-                                                        error!("Unable to parse string suffix, ignore parsing this request");
-                                                        continue;
-                                                    }
-                                                };
-                                                request_name.push('.');
-                                            }
-
-                                            // convert key to fully qualified domain name
-                                            let mut key_fqdn = key.to_owned();
-                                            key_fqdn.push('.');
-                                            if key_fqdn == request_name {
-                                                resolved_ip_list = value.to_vec();
-                                            }
+                                        if let Some(ips) = container_mappings.get(&name) {
+                                            resolved_ip_list.clone_from(ips);
                                         }
                                     }
                                 }
@@ -277,8 +238,8 @@ impl CoreDns {
                             } else {
                                 debug!("Not found, forwarding dns request for {:?}", name);
                                 let request_name = name.as_str().to_owned();
-                                let filter_search_domain_ndots = self.filter_search_domain.clone() + ".";
-                                if no_proxy || backend.ctr_is_internal(&src_address.ip()) || request_name.ends_with(&self.filter_search_domain) || request_name.ends_with(&filter_search_domain_ndots) || request_name.matches('.').count() == 1  {
+                                if no_proxy || backend.ctr_is_internal(&src_address.ip()) ||
+                                    request_name.ends_with(&backend.search_domain) || request_name.matches('.').count() == 1  {
                                     let mut nx_message = req.clone();
                                     nx_message.set_response_code(ResponseCode::NXDomain);
                                     reply(sender.clone(), src_address, &nx_message);
