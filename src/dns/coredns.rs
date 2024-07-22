@@ -47,8 +47,6 @@ impl CoreDns {
         address: IpAddr,
         port: u32,
         network_name: String,
-        forward_addr: IpAddr,
-        forward_port: u16,
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
     ) -> anyhow::Result<Self> {
@@ -66,11 +64,6 @@ impl CoreDns {
         } else if let Ok(n) = Name::parse(&network_name, None) {
             name = n;
         }
-
-        debug!(
-            "Will Forward dns requests to udp://{:?}:{}",
-            forward_addr, forward_port,
-        );
 
         let mut resolv_conf: resolv_conf::Config = resolv_conf::Config::new();
         let mut buf = Vec::with_capacity(4096);

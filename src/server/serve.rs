@@ -210,8 +210,7 @@ async fn start_dns_server(
     port: u32,
     rx: flume::Receiver<()>,
 ) -> Result<(), std::io::Error> {
-    let forward: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-    match CoreDns::new(addr, port, name, forward, 53_u16, backend, rx).await {
+    match CoreDns::new(addr, port, name, backend, rx).await {
         Ok(mut server) => match server.run().await {
             Ok(_) => Ok(()),
             Err(e) => Err(std::io::Error::new(
