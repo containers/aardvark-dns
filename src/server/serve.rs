@@ -2,12 +2,14 @@ use crate::backend::DNSBackend;
 use crate::config;
 use crate::config::constants::AARDVARK_PID_FILE;
 use crate::dns::coredns::CoreDns;
+use anyhow::Context;
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use signal_hook::consts::signal::SIGHUP;
 use signal_hook::iterator::Signals;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::env;
 use std::fs;
 use std::hash::Hash;
 use std::net::IpAddr;
@@ -15,8 +17,7 @@ use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use std::thread;
-use std::thread::JoinHandle;
+use tokio::task::JoinHandle;
 
 use std::fs::File;
 use std::io::prelude::*;
@@ -29,7 +30,7 @@ type Config = (
     HashMap<String, Vec<Ipv6Addr>>,
 );
 type ThreadHandleMap<Ip> =
-    HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<Result<(), std::io::Error>>)>;
+    HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<Result<(), anyhow::Error>>)>;
 
 pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
     // before serving write its pid to _config_path so other process can notify
@@ -56,12 +57,14 @@ pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub fn serve(
+#[tokio::main]
+pub async fn serve(
     config_path: &str,
     port: u32,
     filter_search_domain: &str,
 ) -> Result<(), std::io::Error> {
     let mut signals = Signals::new([SIGHUP])?;
+    let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
     let (backend, mut listen_ip_v4, mut listen_ip_v6) =
         parse_configs(config_path, filter_search_domain)?;
@@ -90,15 +93,15 @@ pub fn serve(
             }
 
             // Gracefully stop all server threads first.
-            stop_threads(&mut handles_v4, None);
-            stop_threads(&mut handles_v6, None);
+            stop_threads(&mut handles_v4, None).await;
+            stop_threads(&mut handles_v6, None).await;
 
             process::exit(0);
         }
 
-        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4);
+        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4, no_proxy).await;
 
-        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6);
+        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6, no_proxy).await;
 
         // Block until we receive a SIGHUP.
         loop {
@@ -128,11 +131,12 @@ fn parse_configs(config_path: &str, filter_search_domain: &str) -> Result<Config
 ///
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
 /// corresponding to listen IPs that were added.
-fn stop_and_start_threads<Ip>(
+async fn stop_and_start_threads<Ip>(
     port: u32,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
+    no_proxy: bool,
 ) where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
 {
@@ -151,7 +155,7 @@ fn stop_and_start_threads<Ip>(
         .filter(|k| !expected_threads.contains(k))
         .cloned()
         .collect();
-    stop_threads(thread_handles, Some(to_shut_down));
+    stop_threads(thread_handles, Some(to_shut_down)).await;
 
     // Then we start any new threads.
     let to_start: Vec<_> = expected_threads
@@ -162,16 +166,16 @@ fn stop_and_start_threads<Ip>(
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
-        let handle = thread::spawn(move || {
-            if let Err(e) = start_dns_server(network_name_, ip.into(), backend, port, shutdown_rx) {
-                error!("Unable to start server: {}", e);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("Error while invoking start_dns_server: {}", e),
-                ));
-            }
-
-            Ok(())
+        let handle = tokio::spawn(async move {
+            start_dns_server(
+                network_name_,
+                ip.into(),
+                backend,
+                port,
+                shutdown_rx,
+                no_proxy,
+            )
+            .await
         });
 
         thread_handles.insert((network_name, ip), (shutdown_tx, handle));
@@ -181,8 +185,10 @@ fn stop_and_start_threads<Ip>(
 /// # Stop DNS server threads
 ///
 /// If the `filter` parameter is `Some` only threads in the filter `Vec` will be stopped.
-fn stop_threads<Ip>(thread_handles: &mut ThreadHandleMap<Ip>, filter: Option<Vec<(String, Ip)>>)
-where
+async fn stop_threads<Ip>(
+    thread_handles: &mut ThreadHandleMap<Ip>,
+    filter: Option<Vec<(String, Ip)>>,
+) where
     Ip: Eq + Hash + Copy,
 {
     let mut handles = Vec::new();
@@ -196,31 +202,21 @@ where
     }
 
     for handle in handles {
-        if let Err(e) = handle.join() {
-            error!("Error from thread: {:?}", e);
+        if let Err(e) = handle.await {
+            error!("Error from dns server: {:?}", e);
         }
     }
 }
 
-#[tokio::main]
 async fn start_dns_server(
     name: String,
     addr: IpAddr,
     backend: &'static ArcSwap<DNSBackend>,
     port: u32,
     rx: flume::Receiver<()>,
-) -> Result<(), std::io::Error> {
-    match CoreDns::new(addr, port, name, backend, rx).await {
-        Ok(mut server) => match server.run().await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("unable to start CoreDns server: {}", e),
-            )),
-        },
-        Err(e) => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("unable to create CoreDns server: {}", e),
-        )),
-    }
+    no_proxy: bool,
+) -> Result<(), anyhow::Error> {
+    let mut server =
+        CoreDns::new(addr, port, name, backend, rx, no_proxy).context("new dns server")?;
+    server.run().await.context("run dns server")
 }
