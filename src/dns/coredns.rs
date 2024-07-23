@@ -167,57 +167,16 @@ impl CoreDns {
                 // No match found, forwarding below.
             }
             RecordType::A | RecordType::AAAA => {
-                let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
-                // attempt intra network resolution
-                match backend.lookup(&src_address.ip(), &request_name_string) {
-                    // If we go success from backend lookup
-                    DNSResult::Success(_ip_vec) => {
-                        debug!("Found backend lookup");
-                        resolved_ip_list = _ip_vec;
-                    }
-                    // For everything else assume the src_address was not in ip_mappings
-                    _ => {
-                        debug!("No backend lookup found, try resolving in current resolvers entry");
-                        if let Some(container_mappings) =
-                            backend.name_mappings.get(&self.network_name)
-                        {
-                            if let Some(ips) = container_mappings.get(&request_name_string) {
-                                resolved_ip_list.clone_from(ips);
-                            }
-                        }
-                    }
-                }
-                if !resolved_ip_list.is_empty() {
-                    if record_type == RecordType::A {
-                        for record_addr in resolved_ip_list {
-                            if let IpAddr::V4(ipv4) = record_addr {
-                                req.add_answer(
-                                    Record::new()
-                                        .set_name(request_name.clone())
-                                        .set_ttl(CONTAINER_TTL)
-                                        .set_rr_type(RecordType::A)
-                                        .set_dns_class(DNSClass::IN)
-                                        .set_data(Some(RData::A(rdata::A(ipv4))))
-                                        .clone(),
-                                );
-                            }
-                        }
-                    } else if record_type == RecordType::AAAA {
-                        for record_addr in resolved_ip_list {
-                            if let IpAddr::V6(ipv6) = record_addr {
-                                req.add_answer(
-                                    Record::new()
-                                        .set_name(request_name.clone())
-                                        .set_ttl(CONTAINER_TTL)
-                                        .set_rr_type(RecordType::AAAA)
-                                        .set_dns_class(DNSClass::IN)
-                                        .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))))
-                                        .clone(),
-                                );
-                            }
-                        }
-                    }
-                    reply(&mut sender, src_address, &req);
+                if let Some(msg) = reply_ip(
+                    &request_name_string,
+                    &request_name,
+                    &self.network_name,
+                    record_type,
+                    &backend,
+                    src_address,
+                    &mut req,
+                ) {
+                    reply(&mut sender, src_address, msg);
                     return;
                 }
                 // No match found, forwarding below.
@@ -427,4 +386,66 @@ fn reply_ptr(
         }
     };
     None
+}
+
+fn reply_ip<'a>(
+    name: &str,
+    request_name: &Name,
+    network_name: &str,
+    record_type: RecordType,
+    backend: &Guard<Arc<DNSBackend>>,
+    src_address: SocketAddr,
+    req: &'a mut Message,
+) -> Option<&'a Message> {
+    let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
+    // attempt intra network resolution
+    match backend.lookup(&src_address.ip(), name) {
+        // If we go success from backend lookup
+        DNSResult::Success(_ip_vec) => {
+            debug!("Found backend lookup");
+            resolved_ip_list = _ip_vec;
+        }
+        // For everything else assume the src_address was not in ip_mappings
+        _ => {
+            debug!("No backend lookup found, try resolving in current resolvers entry");
+            if let Some(container_mappings) = backend.name_mappings.get(network_name) {
+                if let Some(ips) = container_mappings.get(name) {
+                    resolved_ip_list.clone_from(ips);
+                }
+            }
+        }
+    }
+    if resolved_ip_list.is_empty() {
+        return None;
+    }
+    if record_type == RecordType::A {
+        for record_addr in resolved_ip_list {
+            if let IpAddr::V4(ipv4) = record_addr {
+                req.add_answer(
+                    Record::new()
+                        .set_name(request_name.clone())
+                        .set_ttl(CONTAINER_TTL)
+                        .set_rr_type(RecordType::A)
+                        .set_dns_class(DNSClass::IN)
+                        .set_data(Some(RData::A(rdata::A(ipv4))))
+                        .clone(),
+                );
+            }
+        }
+    } else if record_type == RecordType::AAAA {
+        for record_addr in resolved_ip_list {
+            if let IpAddr::V6(ipv6) = record_addr {
+                req.add_answer(
+                    Record::new()
+                        .set_name(request_name.clone())
+                        .set_ttl(CONTAINER_TTL)
+                        .set_rr_type(RecordType::AAAA)
+                        .set_dns_class(DNSClass::IN)
+                        .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))))
+                        .clone(),
+                );
+            }
+        }
+    }
+    Some(req)
 }
