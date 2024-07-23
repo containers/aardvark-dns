@@ -133,7 +133,6 @@ impl CoreDns {
             Ok(msg) => {
                 let backend = self.backend.load();
                 let src_address = msg.addr();
-                let mut dns_resolver = self.resolv_conf.clone();
                 let mut sender = sender_original.with_remote_addr(src_address);
                 let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
                     Some((name, record_type, req)) => (name, record_type, req),
@@ -145,28 +144,6 @@ impl CoreDns {
                 let request_name_string = request_name.to_string();
 
                 let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
-                let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
-                // Add resolvers configured for container
-                if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
-                    if !dns_servers.is_empty() {
-                        for dns_server in dns_servers.iter() {
-                            nameservers_scoped.push(ScopedIp::from(*dns_server));
-                        }
-                    }
-                    // Add network scoped resolvers only if container specific resolvers were not configured
-                } else if let Some(network_dns_servers) =
-                    backend.get_network_scoped_resolvers(&src_address.ip())
-                {
-                    for dns_server in network_dns_servers.iter() {
-                        nameservers_scoped.push(ScopedIp::from(*dns_server));
-                    }
-                }
-                // Override host resolvers with custom resolvers if any  were
-                // configured for container or network.
-                if !nameservers_scoped.is_empty() {
-                    dns_resolver = resolv_conf::Config::new();
-                    dns_resolver.nameservers = nameservers_scoped;
-                }
 
                 // Create debug and trace info for key parameters.
                 trace!("server name: {:?}", self.name.to_ascii());
@@ -252,9 +229,32 @@ impl CoreDns {
                         nx_message.set_response_code(ResponseCode::NXDomain);
                         reply(&mut sender, src_address, &nx_message);
                     } else {
+                        let mut upstream_resolvers = self.resolv_conf.nameservers.clone();
+                        let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
+                        // Add resolvers configured for container
+                        if let Some(Some(dns_servers)) =
+                            backend.ctr_dns_server.get(&src_address.ip())
+                        {
+                            for dns_server in dns_servers.iter() {
+                                nameservers_scoped.push(ScopedIp::from(*dns_server));
+                            }
+                            // Add network scoped resolvers only if container specific resolvers were not configured
+                        } else if let Some(network_dns_servers) =
+                            backend.get_network_scoped_resolvers(&src_address.ip())
+                        {
+                            for dns_server in network_dns_servers.iter() {
+                                nameservers_scoped.push(ScopedIp::from(*dns_server));
+                            }
+                        }
+                        // Override host resolvers with custom resolvers if any  were
+                        // configured for container or network.
+                        if !nameservers_scoped.is_empty() {
+                            upstream_resolvers = nameservers_scoped;
+                        }
+
                         tokio::spawn(async move {
                             // forward dns request to hosts's /etc/resolv.conf
-                            for nameserver in &dns_resolver.nameservers {
+                            for nameserver in &upstream_resolvers {
                                 let connection = UdpClientStream::<UdpSocket>::new(
                                     SocketAddr::new(nameserver.into(), 53),
                                 );
