@@ -31,7 +31,7 @@ hickory-client = "0.24.1"
 anyhow = "1.0.86"
 futures-util = { version = "0.3.30", default-features = false }
 signal-hook = "0.3.17"
-tokio = { version = "1.38.1", features = ["macros", "rt-multi-thread", "net"] }
+tokio = { version = "1.39.0", features = ["macros", "rt-multi-thread", "net"] }
 resolv-conf = "0.7.0"
 nix = { version = "0.29.0", features = ["fs", "signal"] }
 libc = "0.2.154"
