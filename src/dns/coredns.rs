@@ -134,7 +134,7 @@ impl CoreDns {
                 let backend = self.backend.load();
                 let src_address = msg.addr();
                 let mut dns_resolver = self.resolv_conf.clone();
-                let sender = sender_original.with_remote_addr(src_address);
+                let mut sender = sender_original.with_remote_addr(src_address);
                 let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
                     Some((name, record_type, req)) => (name, record_type, req),
                     _ => {
@@ -183,7 +183,7 @@ impl CoreDns {
                 if record_type == RecordType::PTR {
                     if let Some(msg) = reply_ptr(&request_name_string, &backend, src_address, &req)
                     {
-                        reply(sender, src_address, &msg);
+                        reply(&mut sender, src_address, &msg);
                         return;
                     }
                 }
@@ -237,7 +237,7 @@ impl CoreDns {
                             }
                         }
                     }
-                    reply(sender, src_address, &req);
+                    reply(&mut sender, src_address, &req);
                 } else {
                     debug!(
                         "Not found, forwarding dns request for {:?}",
@@ -250,12 +250,11 @@ impl CoreDns {
                     {
                         let mut nx_message = req.clone();
                         nx_message.set_response_code(ResponseCode::NXDomain);
-                        reply(sender.clone(), src_address, &nx_message);
+                        reply(&mut sender, src_address, &nx_message);
                     } else {
-                        let nameservers = dns_resolver.nameservers.clone();
                         tokio::spawn(async move {
                             // forward dns request to hosts's /etc/resolv.conf
-                            for nameserver in nameservers {
+                            for nameserver in &dns_resolver.nameservers {
                                 let connection = UdpClientStream::<UdpSocket>::new(
                                     SocketAddr::new(nameserver.into(), 53),
                                 );
@@ -264,7 +263,7 @@ impl CoreDns {
                                 {
                                     tokio::spawn(req_sender);
                                     if let Some(resp) = forward_dns_req(cl, req.clone()).await {
-                                        if reply(sender.clone(), src_address, &resp).is_some() {
+                                        if reply(&mut sender, src_address, &resp).is_some() {
                                             // request resolved from following resolver so
                                             // break and don't try other resolvers
                                             break;
@@ -282,7 +281,7 @@ impl CoreDns {
     }
 }
 
-fn reply(mut sender: BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message) -> Option<()> {
+fn reply(sender: &mut BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message) -> Option<()> {
     let id = msg.id();
     let mut msg_mut = msg.clone();
     msg_mut.set_message_type(MessageType::Response);
