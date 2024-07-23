@@ -129,154 +129,150 @@ impl CoreDns {
         msg_received: Result<SerialMessage, Error>,
         sender_original: &BufDnsStreamHandle,
     ) {
-        match msg_received {
-            Ok(msg) => {
-                let backend = self.backend.load();
-                let src_address = msg.addr();
-                let mut sender = sender_original.with_remote_addr(src_address);
-                let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
-                    Some((name, record_type, req)) => (name, record_type, req),
-                    _ => {
-                        error!("None received while parsing dns message, this is not expected server will ignore this message");
-                        return;
-                    }
-                };
-                let request_name_string = request_name.to_string();
+        let msg = match msg_received {
+            Ok(msg) => msg,
+            Err(e) => {
+                error!("Error parsing dns message {:?}", e);
+                return;
+            }
+        };
+        let backend = self.backend.load();
+        let src_address = msg.addr();
+        let mut sender = sender_original.with_remote_addr(src_address);
+        let (request_name, record_type, mut req) = match parse_dns_msg(msg) {
+            Some((name, record_type, req)) => (name, record_type, req),
+            _ => {
+                error!("None received while parsing dns message, this is not expected server will ignore this message");
+                return;
+            }
+        };
+        let request_name_string = request_name.to_string();
 
-                let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
+        let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
 
-                // Create debug and trace info for key parameters.
-                trace!("server name: {:?}", self.name.to_ascii());
-                debug!("request source address: {:?}", src_address);
-                trace!("requested record type: {:?}", record_type);
-                debug!(
-                    "checking if backend has entry for: {:?}",
-                    &request_name_string
-                );
-                trace!("server backend.name_mappings: {:?}", backend.name_mappings);
-                trace!("server backend.ip_mappings: {:?}", backend.ip_mappings);
+        // Create debug and trace info for key parameters.
+        trace!("server name: {:?}", self.name.to_ascii());
+        debug!("request source address: {:?}", src_address);
+        trace!("requested record type: {:?}", record_type);
+        debug!(
+            "checking if backend has entry for: {:?}",
+            &request_name_string
+        );
+        trace!("server backend.name_mappings: {:?}", backend.name_mappings);
+        trace!("server backend.ip_mappings: {:?}", backend.ip_mappings);
 
-                // if record type is PTR try resolving early and return if record found
-                if record_type == RecordType::PTR {
-                    if let Some(msg) = reply_ptr(&request_name_string, &backend, src_address, &req)
-                    {
-                        reply(&mut sender, src_address, &msg);
-                        return;
-                    }
-                }
+        // if record type is PTR try resolving early and return if record found
+        if record_type == RecordType::PTR {
+            if let Some(msg) = reply_ptr(&request_name_string, &backend, src_address, &req) {
+                reply(&mut sender, src_address, &msg);
+                return;
+            }
+        }
 
-                // attempt intra network resolution
-                match backend.lookup(&src_address.ip(), &request_name_string) {
-                    // If we go success from backend lookup
-                    DNSResult::Success(_ip_vec) => {
-                        debug!("Found backend lookup");
-                        resolved_ip_list = _ip_vec;
-                    }
-                    // For everything else assume the src_address was not in ip_mappings
-                    _ => {
-                        debug!("No backend lookup found, try resolving in current resolvers entry");
-                        if let Some(container_mappings) =
-                            backend.name_mappings.get(&self.network_name)
-                        {
-                            if let Some(ips) = container_mappings.get(&request_name_string) {
-                                resolved_ip_list.clone_from(ips);
-                            }
-                        }
-                    }
-                }
-                if !resolved_ip_list.is_empty() {
-                    if record_type == RecordType::A {
-                        for record_addr in resolved_ip_list {
-                            if let IpAddr::V4(ipv4) = record_addr {
-                                req.add_answer(
-                                    Record::new()
-                                        .set_name(request_name.clone())
-                                        .set_ttl(CONTAINER_TTL)
-                                        .set_rr_type(RecordType::A)
-                                        .set_dns_class(DNSClass::IN)
-                                        .set_data(Some(RData::A(rdata::A(ipv4))))
-                                        .clone(),
-                                );
-                            }
-                        }
-                    } else if record_type == RecordType::AAAA {
-                        for record_addr in resolved_ip_list {
-                            if let IpAddr::V6(ipv6) = record_addr {
-                                req.add_answer(
-                                    Record::new()
-                                        .set_name(request_name.clone())
-                                        .set_ttl(CONTAINER_TTL)
-                                        .set_rr_type(RecordType::AAAA)
-                                        .set_dns_class(DNSClass::IN)
-                                        .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))))
-                                        .clone(),
-                                );
-                            }
-                        }
-                    }
-                    reply(&mut sender, src_address, &req);
-                } else {
-                    debug!(
-                        "Not found, forwarding dns request for {:?}",
-                        &request_name_string
-                    );
-                    if self.no_proxy
-                        || backend.ctr_is_internal(&src_address.ip())
-                        || request_name_string.ends_with(&backend.search_domain)
-                        || request_name_string.matches('.').count() == 1
-                    {
-                        let mut nx_message = req.clone();
-                        nx_message.set_response_code(ResponseCode::NXDomain);
-                        reply(&mut sender, src_address, &nx_message);
-                    } else {
-                        let mut upstream_resolvers = self.resolv_conf.nameservers.clone();
-                        let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
-                        // Add resolvers configured for container
-                        if let Some(Some(dns_servers)) =
-                            backend.ctr_dns_server.get(&src_address.ip())
-                        {
-                            for dns_server in dns_servers.iter() {
-                                nameservers_scoped.push(ScopedIp::from(*dns_server));
-                            }
-                            // Add network scoped resolvers only if container specific resolvers were not configured
-                        } else if let Some(network_dns_servers) =
-                            backend.get_network_scoped_resolvers(&src_address.ip())
-                        {
-                            for dns_server in network_dns_servers.iter() {
-                                nameservers_scoped.push(ScopedIp::from(*dns_server));
-                            }
-                        }
-                        // Override host resolvers with custom resolvers if any  were
-                        // configured for container or network.
-                        if !nameservers_scoped.is_empty() {
-                            upstream_resolvers = nameservers_scoped;
-                        }
-
-                        tokio::spawn(async move {
-                            // forward dns request to hosts's /etc/resolv.conf
-                            for nameserver in &upstream_resolvers {
-                                let connection = UdpClientStream::<UdpSocket>::new(
-                                    SocketAddr::new(nameserver.into(), 53),
-                                );
-
-                                if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await
-                                {
-                                    tokio::spawn(req_sender);
-                                    if let Some(resp) = forward_dns_req(cl, req.clone()).await {
-                                        if reply(&mut sender, src_address, &resp).is_some() {
-                                            // request resolved from following resolver so
-                                            // break and don't try other resolvers
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        });
+        // attempt intra network resolution
+        match backend.lookup(&src_address.ip(), &request_name_string) {
+            // If we go success from backend lookup
+            DNSResult::Success(_ip_vec) => {
+                debug!("Found backend lookup");
+                resolved_ip_list = _ip_vec;
+            }
+            // For everything else assume the src_address was not in ip_mappings
+            _ => {
+                debug!("No backend lookup found, try resolving in current resolvers entry");
+                if let Some(container_mappings) = backend.name_mappings.get(&self.network_name) {
+                    if let Some(ips) = container_mappings.get(&request_name_string) {
+                        resolved_ip_list.clone_from(ips);
                     }
                 }
             }
+        }
+        if !resolved_ip_list.is_empty() {
+            if record_type == RecordType::A {
+                for record_addr in resolved_ip_list {
+                    if let IpAddr::V4(ipv4) = record_addr {
+                        req.add_answer(
+                            Record::new()
+                                .set_name(request_name.clone())
+                                .set_ttl(CONTAINER_TTL)
+                                .set_rr_type(RecordType::A)
+                                .set_dns_class(DNSClass::IN)
+                                .set_data(Some(RData::A(rdata::A(ipv4))))
+                                .clone(),
+                        );
+                    }
+                }
+            } else if record_type == RecordType::AAAA {
+                for record_addr in resolved_ip_list {
+                    if let IpAddr::V6(ipv6) = record_addr {
+                        req.add_answer(
+                            Record::new()
+                                .set_name(request_name.clone())
+                                .set_ttl(CONTAINER_TTL)
+                                .set_rr_type(RecordType::AAAA)
+                                .set_dns_class(DNSClass::IN)
+                                .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))))
+                                .clone(),
+                        );
+                    }
+                }
+            }
+            reply(&mut sender, src_address, &req);
+        } else {
+            debug!(
+                "Not found, forwarding dns request for {:?}",
+                &request_name_string
+            );
+            if self.no_proxy
+                || backend.ctr_is_internal(&src_address.ip())
+                || request_name_string.ends_with(&backend.search_domain)
+                || request_name_string.matches('.').count() == 1
+            {
+                let mut nx_message = req.clone();
+                nx_message.set_response_code(ResponseCode::NXDomain);
+                reply(&mut sender, src_address, &nx_message);
+            } else {
+                let mut upstream_resolvers = self.resolv_conf.nameservers.clone();
+                let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
+                // Add resolvers configured for container
+                if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
+                    for dns_server in dns_servers.iter() {
+                        nameservers_scoped.push(ScopedIp::from(*dns_server));
+                    }
+                    // Add network scoped resolvers only if container specific resolvers were not configured
+                } else if let Some(network_dns_servers) =
+                    backend.get_network_scoped_resolvers(&src_address.ip())
+                {
+                    for dns_server in network_dns_servers.iter() {
+                        nameservers_scoped.push(ScopedIp::from(*dns_server));
+                    }
+                }
+                // Override host resolvers with custom resolvers if any  were
+                // configured for container or network.
+                if !nameservers_scoped.is_empty() {
+                    upstream_resolvers = nameservers_scoped;
+                }
 
-            Err(e) => error!("Error parsing dns message {:?}", e),
+                tokio::spawn(async move {
+                    // forward dns request to hosts's /etc/resolv.conf
+                    for nameserver in &upstream_resolvers {
+                        let connection = UdpClientStream::<UdpSocket>::new(SocketAddr::new(
+                            nameserver.into(),
+                            53,
+                        ));
+
+                        if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
+                            tokio::spawn(req_sender);
+                            if let Some(resp) = forward_dns_req(cl, req.clone()).await {
+                                if reply(&mut sender, src_address, &resp).is_some() {
+                                    // request resolved from following resolver so
+                                    // break and don't try other resolvers
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
+            }
         }
     }
 }
