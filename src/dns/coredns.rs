@@ -43,8 +43,7 @@ pub struct CoreDns {
 impl CoreDns {
     // Most of the arg can be removed in design refactor.
     // so dont create a struct for this now.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn new(
+    pub fn new(
         address: IpAddr,
         port: u32,
         network_name: String,
