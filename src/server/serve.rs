@@ -5,16 +5,22 @@ use crate::dns::coredns::CoreDns;
 use anyhow::Context;
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
+use nix::unistd;
+use nix::unistd::dup2;
 use signal_hook::consts::signal::SIGHUP;
 use signal_hook::iterator::Signals;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::fs::OpenOptions;
 use std::hash::Hash;
+use std::io::Error;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
+use std::os::fd::AsRawFd;
+use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::task::JoinHandle;
@@ -62,12 +68,20 @@ pub async fn serve(
     config_path: &str,
     port: u32,
     filter_search_domain: &str,
+    ready: OwnedFd,
 ) -> Result<(), std::io::Error> {
     let mut signals = Signals::new([SIGHUP])?;
     let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
     let (backend, mut listen_ip_v4, mut listen_ip_v6) =
         parse_configs(config_path, filter_search_domain)?;
+
+    // We are ready now, this is far from perfect we should at least wait for the first bind
+    // to work but this is not really possible with the current code flow and needs more changes.
+    daemonize()?;
+    let msg: [u8; 1] = [b'1'];
+    unistd::write(&ready, &msg)?;
+    drop(ready);
 
     // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
     // reloaded.
@@ -219,4 +233,23 @@ async fn start_dns_server(
     let mut server =
         CoreDns::new(addr, port, name, backend, rx, no_proxy).context("new dns server")?;
     server.run().await.context("run dns server")
+}
+
+// creates new session and put /dev/null on the stdio streams
+fn daemonize() -> Result<(), Error> {
+    // remove any controlling terminals
+    // but don't hardstop if this fails
+    let _ = unsafe { libc::setsid() }; // check https://docs.rs/libc
+                                       // close fds -> stdout, stdin and stderr
+    let dev_null = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open("/dev/null")
+        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {}", e)))?;
+    // redirect stdout, stdin and stderr to /dev/null
+    let fd = dev_null.as_raw_fd();
+    let _ = dup2(fd, 0);
+    let _ = dup2(fd, 1);
+    let _ = dup2(fd, 2);
+    Ok(())
 }
