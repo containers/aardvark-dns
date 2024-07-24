@@ -216,8 +216,17 @@ async fn stop_threads<Ip>(
     }
 
     for handle in handles {
-        if let Err(e) = handle.await {
-            error!("Error from dns server: {:?}", e);
+        match handle.await {
+            Ok(res) => {
+                // result returned by the future, i.e. that actual
+                // result from start_dns_server()
+                if let Err(e) = res {
+                    // special anyhow error format to include cause but do not print backtrace
+                    error!("Error from dns server: {:#}", e)
+                }
+            }
+            // error from tokio itself
+            Err(e) => error!("Error from dns server task: {}", e),
         }
     }
 }
