@@ -7,6 +7,7 @@ use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
 use nix::unistd::dup2;
+use resolv_conf::ScopedIp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -112,9 +113,34 @@ pub async fn serve(
             process::exit(0);
         }
 
-        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4, no_proxy).await;
+        // get host nameservers
+        let nameservers = match get_upstream_resolvers() {
+            Ok(n) => n,
+            Err(e) => {
+                error!("failed to get upstream nameservers: {:#}", e);
+                Vec::new()
+            }
+        };
 
-        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6, no_proxy).await;
+        stop_and_start_threads(
+            port,
+            backend,
+            listen_ip_v4,
+            &mut handles_v4,
+            no_proxy,
+            &nameservers,
+        )
+        .await;
+
+        stop_and_start_threads(
+            port,
+            backend,
+            listen_ip_v6,
+            &mut handles_v6,
+            no_proxy,
+            &nameservers,
+        )
+        .await;
 
         // Block until we receive a SIGHUP.
         signals.recv().await;
@@ -141,12 +167,13 @@ fn parse_configs(config_path: &str, filter_search_domain: &str) -> Result<Config
 ///
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
 /// corresponding to listen IPs that were added.
-async fn stop_and_start_threads<Ip>(
+async fn stop_and_start_threads<'a, Ip>(
     port: u32,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
+    nameservers: &'a [ScopedIp],
 ) where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
 {
@@ -176,6 +203,7 @@ async fn stop_and_start_threads<Ip>(
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
+        let ns = nameservers.to_owned();
         let handle = tokio::spawn(async move {
             start_dns_server(
                 network_name_,
@@ -184,6 +212,7 @@ async fn stop_and_start_threads<Ip>(
                 port,
                 shutdown_rx,
                 no_proxy,
+                ns,
             )
             .await
         });
@@ -234,9 +263,10 @@ async fn start_dns_server(
     port: u32,
     rx: flume::Receiver<()>,
     no_proxy: bool,
+    nameservers: Vec<ScopedIp>,
 ) -> Result<(), anyhow::Error> {
-    let mut server =
-        CoreDns::new(addr, port, name, backend, rx, no_proxy).context("new dns server")?;
+    let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers)
+        .context("new dns server")?;
     server.run().await.context("run dns server")
 }
 
@@ -250,11 +280,20 @@ fn daemonize() -> Result<(), Error> {
         .read(true)
         .write(true)
         .open("/dev/null")
-        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {}", e)))?;
+        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {:#}", e)))?;
     // redirect stdout, stdin and stderr to /dev/null
     let fd = dev_null.as_raw_fd();
     let _ = dup2(fd, 0);
     let _ = dup2(fd, 1);
     let _ = dup2(fd, 2);
     Ok(())
+}
+
+// read /etc/resolv.conf and return all nameservers
+fn get_upstream_resolvers() -> Result<Vec<ScopedIp>, anyhow::Error> {
+    let mut f = File::open("/etc/resolv.conf").context("open resolv.conf")?;
+    let mut buf = Vec::with_capacity(4096);
+    f.read_to_end(&mut buf).context("read resolv.conf")?;
+    let conf = resolv_conf::Config::parse(buf).context("parse resolv.conf")?;
+    Ok(conf.nameservers)
 }

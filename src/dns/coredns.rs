@@ -16,9 +16,7 @@ use log::{debug, error, trace, warn};
 use resolv_conf;
 use resolv_conf::ScopedIp;
 use std::convert::TryInto;
-use std::fs::File;
 use std::io::Error;
-use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::UdpSocket;
@@ -36,8 +34,8 @@ pub struct CoreDns {
     port: u32,                             // server port
     backend: &'static ArcSwap<DNSBackend>, // server's data store
     rx: flume::Receiver<()>,               // kill switch receiver
-    resolv_conf: resolv_conf::Config,      // host's parsed /etc/resolv.conf
     no_proxy: bool,                        // do not forward to external resolvers
+    nameservers: Vec<ScopedIp>,            // host nameservers from resolv.conf
 }
 
 impl CoreDns {
@@ -50,6 +48,7 @@ impl CoreDns {
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
         no_proxy: bool,
+        nameservers: Vec<ScopedIp>,
     ) -> anyhow::Result<Self> {
         // this does not have to be unique, if we fail getting server name later
         // start with empty name
@@ -66,16 +65,6 @@ impl CoreDns {
             name = n;
         }
 
-        let mut resolv_conf: resolv_conf::Config = resolv_conf::Config::new();
-        let mut buf = Vec::with_capacity(4096);
-        if let Ok(mut f) = File::open("/etc/resolv.conf") {
-            if f.read_to_end(&mut buf).is_ok() {
-                if let Ok(conf) = resolv_conf::Config::parse(&buf) {
-                    resolv_conf = conf;
-                }
-            }
-        }
-
         Ok(CoreDns {
             name,
             network_name,
@@ -83,8 +72,8 @@ impl CoreDns {
             port,
             backend,
             rx,
-            resolv_conf,
             no_proxy,
+            nameservers,
         })
     }
 
@@ -203,7 +192,7 @@ impl CoreDns {
                 "Forwarding dns request for {} type: {}",
                 &request_name_string, record_type
             );
-            let mut upstream_resolvers = self.resolv_conf.nameservers.clone();
+            let mut upstream_resolvers = self.nameservers.clone();
             let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
             // Add resolvers configured for container
             if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
