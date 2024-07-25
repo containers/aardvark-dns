@@ -1,6 +1,6 @@
 use crate::backend::DNSBackend;
-use crate::config;
 use crate::config::constants::AARDVARK_PID_FILE;
+use crate::config::parse_configs;
 use crate::dns::coredns::CoreDns;
 use anyhow::Context;
 use arc_swap::ArcSwap;
@@ -30,11 +30,6 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::process;
 
-type Config = (
-    DNSBackend,
-    HashMap<String, Vec<Ipv4Addr>>,
-    HashMap<String, Vec<Ipv6Addr>>,
-);
 type ThreadHandleMap<Ip> =
     HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<Result<(), anyhow::Error>>)>;
 
@@ -110,15 +105,6 @@ pub async fn serve(
             error!("{e:#}");
         };
     }
-}
-
-fn parse_configs(config_path: &str, filter_search_domain: &str) -> Result<Config, std::io::Error> {
-    config::parse_configs(config_path, filter_search_domain).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("unable to parse config: {}", e),
-        )
-    })
 }
 
 /// # Ensure the expected DNS server threads are running
@@ -235,7 +221,8 @@ async fn read_config_and_spawn(
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
     no_proxy: bool,
 ) -> anyhow::Result<()> {
-    let (conf, listen_ip_v4, listen_ip_v6) = parse_configs(config_path, filter_search_domain)?;
+    let (conf, listen_ip_v4, listen_ip_v6) =
+        parse_configs(config_path, filter_search_domain).context("unable to parse config")?;
 
     // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
     // reloaded.
