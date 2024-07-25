@@ -28,7 +28,6 @@ use tokio::net::UdpSocket;
 const CONTAINER_TTL: u32 = 60;
 
 pub struct CoreDns {
-    name: Name,                            // name or origin
     network_name: String,                  // raw network name
     address: IpAddr,                       // server address
     port: u32,                             // server port
@@ -49,24 +48,8 @@ impl CoreDns {
         rx: flume::Receiver<()>,
         no_proxy: bool,
         nameservers: Vec<ScopedIp>,
-    ) -> anyhow::Result<Self> {
-        // this does not have to be unique, if we fail getting server name later
-        // start with empty name
-        let mut name: Name = Name::new();
-
-        if network_name.len() > 10 {
-            // to long to set this as name of dns server strip only first 10 chars
-            // trust dns limitation, this is nothing to worry about since server name
-            // has nothing to do without DNS logic, name can be random as well.
-            if let Ok(n) = Name::parse(&network_name[..10], None) {
-                name = n;
-            }
-        } else if let Ok(n) = Name::parse(&network_name, None) {
-            name = n;
-        }
-
-        Ok(CoreDns {
-            name,
+    ) -> Self {
+        CoreDns {
             network_name,
             address,
             port,
@@ -74,7 +57,7 @@ impl CoreDns {
             rx,
             no_proxy,
             nameservers,
-        })
+        }
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
@@ -137,7 +120,7 @@ impl CoreDns {
         let request_name_string = request_name.to_string();
 
         // Create debug and trace info for key parameters.
-        trace!("server name: {:?}", self.name.to_ascii());
+        trace!("server network name: {:?}", self.network_name);
         debug!("request source address: {:?}", src_address);
         trace!("requested record type: {:?}", record_type);
         debug!(

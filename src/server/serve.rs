@@ -265,8 +265,7 @@ async fn start_dns_server(
     no_proxy: bool,
     nameservers: Vec<ScopedIp>,
 ) -> Result<(), anyhow::Error> {
-    let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers)
-        .context("new dns server")?;
+    let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers);
     server.run().await.context("run dns server")
 }
 
