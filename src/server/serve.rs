@@ -7,8 +7,6 @@ use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
 use nix::unistd::dup2;
-use signal_hook::consts::signal::SIGHUP;
-use signal_hook::iterator::Signals;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -23,6 +21,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 
 use std::fs::File;
@@ -70,7 +69,7 @@ pub async fn serve(
     filter_search_domain: &str,
     ready: OwnedFd,
 ) -> Result<(), std::io::Error> {
-    let mut signals = Signals::new([SIGHUP])?;
+    let mut signals = signal(SignalKind::hangup())?;
     let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
     let (backend, mut listen_ip_v4, mut listen_ip_v6) =
@@ -118,11 +117,8 @@ pub async fn serve(
         stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6, no_proxy).await;
 
         // Block until we receive a SIGHUP.
-        loop {
-            if signals.wait().next().is_some() {
-                break;
-            }
-        }
+        signals.recv().await;
+        debug!("Received SIGHUP");
 
         let (new_backend, new_listen_ip_v4, new_listen_ip_v6) =
             parse_configs(config_path, filter_search_domain)?;
