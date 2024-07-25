@@ -2,13 +2,9 @@
 use crate::server::serve;
 use clap::Parser;
 use nix::unistd;
-use nix::unistd::{dup2, fork, ForkResult};
-use std::fs::File;
-use std::fs::OpenOptions;
+use nix::unistd::{fork, ForkResult};
 use std::io::Error;
-use std::io::Write;
 use std::os::unix::io::AsRawFd;
-use std::os::unix::io::FromRawFd;
 
 #[derive(Parser, Debug)]
 pub struct Run {}
@@ -36,32 +32,24 @@ impl Run {
         match unsafe { fork() } {
             Ok(ForkResult::Parent { child, .. }) => {
                 log::debug!("starting aardvark on a child with pid {}", child);
+                // close write here to make sure the read does not hang when
+                // child never sends message because it exited to early...
+                drop(ready_pipe_write);
                 // verify aardvark here and block till will start
-                unistd::read(ready_pipe_read.as_raw_fd(), &mut [0_u8; 1])?;
-                unistd::close(ready_pipe_read.as_raw_fd())?;
-                unistd::close(ready_pipe_write.as_raw_fd())?;
-                Ok(())
+                let i = unistd::read(ready_pipe_read.as_raw_fd(), &mut [0_u8; 1])?;
+                drop(ready_pipe_read);
+                if i == 0 {
+                    // we did not get nay message -> child exited with error
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Error from child process",
+                    ))
+                } else {
+                    Ok(())
+                }
             }
             Ok(ForkResult::Child) => {
-                // remove any controlling terminals
-                // but don't hardstop if this fails
-                let _ = unsafe { libc::setsid() }; // check https://docs.rs/libc
-                                                   // close fds -> stdout, stdin and stderr
-                let dev_null = OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open("/dev/null")
-                    .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {}", e)));
-                // redirect stdout, stdin and stderr to /dev/null
-                if let Ok(dev_null) = dev_null {
-                    let fd = dev_null.as_raw_fd();
-                    let _ = dup2(fd, 0);
-                    let _ = dup2(fd, 1);
-                    let _ = dup2(fd, 2);
-                    if fd < 2 {
-                        std::mem::forget(dev_null);
-                    }
-                }
+                drop(ready_pipe_read);
                 // create aardvark pid and then notify parent
                 if let Err(er) = serve::create_pid(&input_dir) {
                     return Err(std::io::Error::new(
@@ -69,11 +57,10 @@ impl Run {
                         format!("Error creating aardvark pid {}", er),
                     ));
                 }
-                let mut f = unsafe { File::from_raw_fd(ready_pipe_write.as_raw_fd()) };
-                write!(&mut f, "ready")?;
-                unistd::close(ready_pipe_read.as_raw_fd())?;
-                unistd::close(ready_pipe_write.as_raw_fd())?;
-                if let Err(er) = serve::serve(&input_dir, port, &filter_search_domain) {
+
+                if let Err(er) =
+                    serve::serve(&input_dir, port, &filter_search_domain, ready_pipe_write)
+                {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         format!("Error starting server {}", er),
