@@ -1,12 +1,13 @@
 use crate::backend::DNSBackend;
-use crate::config;
 use crate::config::constants::AARDVARK_PID_FILE;
+use crate::config::parse_configs;
 use crate::dns::coredns::CoreDns;
 use anyhow::Context;
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
 use nix::unistd::dup2;
+use resolv_conf::ScopedIp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -29,11 +30,6 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::process;
 
-type Config = (
-    DNSBackend,
-    HashMap<String, Vec<Ipv4Addr>>,
-    HashMap<String, Vec<Ipv6Addr>>,
-);
 type ThreadHandleMap<Ip> =
     HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<Result<(), anyhow::Error>>)>;
 
@@ -68,13 +64,22 @@ pub async fn serve(
     port: u32,
     filter_search_domain: &str,
     ready: OwnedFd,
-) -> Result<(), std::io::Error> {
+) -> anyhow::Result<()> {
     let mut signals = signal(SignalKind::hangup())?;
     let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
-    let (backend, mut listen_ip_v4, mut listen_ip_v6) =
-        parse_configs(config_path, filter_search_domain)?;
+    let mut handles_v4 = HashMap::new();
+    let mut handles_v6 = HashMap::new();
 
+    read_config_and_spawn(
+        config_path,
+        port,
+        filter_search_domain,
+        &mut handles_v4,
+        &mut handles_v6,
+        no_proxy,
+    )
+    .await?;
     // We are ready now, this is far from perfect we should at least wait for the first bind
     // to work but this is not really possible with the current code flow and needs more changes.
     daemonize()?;
@@ -82,71 +87,37 @@ pub async fn serve(
     unistd::write(&ready, &msg)?;
     drop(ready);
 
-    // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
-    // reloaded.
-    static DNSBACKEND: OnceLock<ArcSwap<DNSBackend>> = OnceLock::new();
-    let backend = DNSBACKEND.get_or_init(|| ArcSwap::from(Arc::new(backend)));
-
-    let mut handles_v4 = HashMap::new();
-    let mut handles_v6 = HashMap::new();
-
     loop {
-        debug!("Successfully parsed config");
-        debug!("Listen v4 ip {:?}", listen_ip_v4);
-        debug!("Listen v6 ip {:?}", listen_ip_v6);
-
-        // kill server if listen_ip's are empty
-        if listen_ip_v4.is_empty() && listen_ip_v6.is_empty() {
-            info!("No configuration found stopping the sever");
-
-            let path = Path::new(config_path).join(AARDVARK_PID_FILE);
-            if let Err(err) = fs::remove_file(path) {
-                error!("failed to remove the pid file: {}", &err);
-                process::exit(1);
-            }
-
-            // Gracefully stop all server threads first.
-            stop_threads(&mut handles_v4, None).await;
-            stop_threads(&mut handles_v6, None).await;
-
-            process::exit(0);
-        }
-
-        stop_and_start_threads(port, backend, listen_ip_v4, &mut handles_v4, no_proxy).await;
-
-        stop_and_start_threads(port, backend, listen_ip_v6, &mut handles_v6, no_proxy).await;
-
         // Block until we receive a SIGHUP.
         signals.recv().await;
         debug!("Received SIGHUP");
-
-        let (new_backend, new_listen_ip_v4, new_listen_ip_v6) =
-            parse_configs(config_path, filter_search_domain)?;
-        backend.store(Arc::new(new_backend));
-        listen_ip_v4 = new_listen_ip_v4;
-        listen_ip_v6 = new_listen_ip_v6;
-    }
-}
-
-fn parse_configs(config_path: &str, filter_search_domain: &str) -> Result<Config, std::io::Error> {
-    config::parse_configs(config_path, filter_search_domain).map_err(|e| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("unable to parse config: {}", e),
+        if let Err(e) = read_config_and_spawn(
+            config_path,
+            port,
+            filter_search_domain,
+            &mut handles_v4,
+            &mut handles_v6,
+            no_proxy,
         )
-    })
+        .await
+        {
+            // do not exit here, we just keep running even if something failed
+            error!("{e:#}");
+        };
+    }
 }
 
 /// # Ensure the expected DNS server threads are running
 ///
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
 /// corresponding to listen IPs that were added.
-async fn stop_and_start_threads<Ip>(
+async fn stop_and_start_threads<'a, Ip>(
     port: u32,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
+    nameservers: &'a [ScopedIp],
 ) where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
 {
@@ -176,6 +147,7 @@ async fn stop_and_start_threads<Ip>(
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
+        let ns = nameservers.to_owned();
         let handle = tokio::spawn(async move {
             start_dns_server(
                 network_name_,
@@ -184,6 +156,7 @@ async fn stop_and_start_threads<Ip>(
                 port,
                 shutdown_rx,
                 no_proxy,
+                ns,
             )
             .await
         });
@@ -234,10 +207,79 @@ async fn start_dns_server(
     port: u32,
     rx: flume::Receiver<()>,
     no_proxy: bool,
+    nameservers: Vec<ScopedIp>,
 ) -> Result<(), anyhow::Error> {
-    let mut server =
-        CoreDns::new(addr, port, name, backend, rx, no_proxy).context("new dns server")?;
+    let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers);
     server.run().await.context("run dns server")
+}
+
+async fn read_config_and_spawn(
+    config_path: &str,
+    port: u32,
+    filter_search_domain: &str,
+    handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
+    handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
+    no_proxy: bool,
+) -> anyhow::Result<()> {
+    let (conf, listen_ip_v4, listen_ip_v6) =
+        parse_configs(config_path, filter_search_domain).context("unable to parse config")?;
+
+    // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
+    // reloaded.
+    static DNSBACKEND: OnceLock<ArcSwap<DNSBackend>> = OnceLock::new();
+    let backend = match DNSBACKEND.get() {
+        Some(b) => {
+            b.store(Arc::new(conf));
+            b
+        }
+        None => DNSBACKEND.get_or_init(|| ArcSwap::from(Arc::new(conf))),
+    };
+
+    debug!("Successfully parsed config");
+    debug!("Listen v4 ip {:?}", listen_ip_v4);
+    debug!("Listen v6 ip {:?}", listen_ip_v6);
+
+    // kill server if listen_ip's are empty
+    if listen_ip_v4.is_empty() && listen_ip_v6.is_empty() {
+        info!("No configuration found stopping the sever");
+
+        let path = Path::new(config_path).join(AARDVARK_PID_FILE);
+        if let Err(err) = fs::remove_file(path) {
+            error!("failed to remove the pid file: {}", &err);
+            process::exit(1);
+        }
+
+        // Gracefully stop all server threads first.
+        stop_threads(handles_v4, None).await;
+        stop_threads(handles_v6, None).await;
+
+        process::exit(0);
+    }
+
+    // get host nameservers
+    let nameservers = get_upstream_resolvers().context("failed to get upstream nameservers")?;
+
+    stop_and_start_threads(
+        port,
+        backend,
+        listen_ip_v4,
+        handles_v4,
+        no_proxy,
+        &nameservers,
+    )
+    .await;
+
+    stop_and_start_threads(
+        port,
+        backend,
+        listen_ip_v6,
+        handles_v6,
+        no_proxy,
+        &nameservers,
+    )
+    .await;
+
+    Ok(())
 }
 
 // creates new session and put /dev/null on the stdio streams
@@ -250,11 +292,20 @@ fn daemonize() -> Result<(), Error> {
         .read(true)
         .write(true)
         .open("/dev/null")
-        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {}", e)))?;
+        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {:#}", e)))?;
     // redirect stdout, stdin and stderr to /dev/null
     let fd = dev_null.as_raw_fd();
     let _ = dup2(fd, 0);
     let _ = dup2(fd, 1);
     let _ = dup2(fd, 2);
     Ok(())
+}
+
+// read /etc/resolv.conf and return all nameservers
+fn get_upstream_resolvers() -> Result<Vec<ScopedIp>, anyhow::Error> {
+    let mut f = File::open("/etc/resolv.conf").context("open resolv.conf")?;
+    let mut buf = Vec::with_capacity(4096);
+    f.read_to_end(&mut buf).context("read resolv.conf")?;
+    let conf = resolv_conf::Config::parse(buf).context("parse resolv.conf")?;
+    Ok(conf.nameservers)
 }
