@@ -61,8 +61,7 @@ impl CoreDns {
     }
 
     pub async fn run(&mut self) -> anyhow::Result<()> {
-        tokio::try_join!(self.register_port())?;
-        Ok(())
+        self.register_port().await
     }
 
     // registers port supports udp for now
