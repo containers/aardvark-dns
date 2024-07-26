@@ -501,8 +501,8 @@ EOF
 function create_container() {
     CONTAINER_NS_PID=$(create_netns)
     CONTAINER_NS_PIDS+=("$CONTAINER_NS_PID")
-    create_container_backend "$CONTAINER_NS_PID" "$1"
     CONTAINER_CONFIGS+=("$1")
+    create_container_backend "$CONTAINER_NS_PID" "$1"
 }
 
 # arg1 is pid
@@ -559,17 +559,6 @@ function setup_slirp4netns() {
 }
 
 function basic_teardown() {
-    rm -fr "$AARDVARK_TMPDIR"
-}
-
-################
-#  netavark_teardown#  tears down a network
-################
-function netavark_teardown() {
-    run_netavark teardown $1 <<<"$2"
-}
-
-function teardown() {
     # Now call netavark with all the configs and then kill the netns associated with it
     for i in "${!CONTAINER_CONFIGS[@]}"; do
         netavark_teardown $(get_container_netns_path "${CONTAINER_NS_PIDS[$i]}") "${CONTAINER_CONFIGS[$i]}"
@@ -587,6 +576,17 @@ function teardown() {
         kill -9 "$HOST_NS_PID"
     fi
 
+    rm -fr "$AARDVARK_TMPDIR"
+}
+
+################
+#  netavark_teardown#  tears down a network
+################
+function netavark_teardown() {
+    run_netavark teardown $1 <<<"$2"
+}
+
+function teardown() {
     basic_teardown
 }
 
