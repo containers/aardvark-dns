@@ -6,7 +6,6 @@ version = 3
 name = "aardvark-dns"
 version = "1.12.0-dev"
 dependencies = [
- "anyhow",
  "arc-swap",
  "chrono",
  "clap",
@@ -101,12 +100,6 @@ dependencies = [
  "anstyle",
  "windows-sys",
 ]
-
-[[package]]
-name = "anyhow"
-version = "1.0.86"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3d1d046238990b9cf5bcde22a3fb3584ee5cf65fb2765f454ed428c7a0063da"
 
 [[package]]
 name = "arc-swap"

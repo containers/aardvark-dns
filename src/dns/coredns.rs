@@ -1,5 +1,6 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
+use crate::error::AardvarkResult;
 use arc_swap::ArcSwap;
 use arc_swap::Guard;
 use futures_util::StreamExt;
@@ -60,12 +61,12 @@ impl CoreDns {
         }
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> AardvarkResult<()> {
         self.register_port().await
     }
 
     // registers port supports udp for now
-    async fn register_port(&mut self) -> anyhow::Result<()> {
+    async fn register_port(&mut self) -> AardvarkResult<()> {
         debug!("Starting listen on udp {:?}:{}", self.address, self.port);
 
         // Do we need to serve on tcp anywhere in future ?

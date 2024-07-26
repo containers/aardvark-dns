@@ -2,7 +2,8 @@ use crate::backend::DNSBackend;
 use crate::config::constants::AARDVARK_PID_FILE;
 use crate::config::parse_configs;
 use crate::dns::coredns::CoreDns;
-use anyhow::Context;
+use crate::error::AardvarkResult;
+use crate::error::AardvarkWrap;
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
@@ -31,7 +32,7 @@ use std::path::Path;
 use std::process;
 
 type ThreadHandleMap<Ip> =
-    HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<Result<(), anyhow::Error>>)>;
+    HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<AardvarkResult<()>>)>;
 
 pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
     // before serving write its pid to _config_path so other process can notify
@@ -64,7 +65,7 @@ pub async fn serve(
     port: u32,
     filter_search_domain: &str,
     ready: OwnedFd,
-) -> anyhow::Result<()> {
+) -> AardvarkResult<()> {
     let mut signals = signal(SignalKind::hangup())?;
     let no_proxy: bool = env::var("AARDVARK_NO_PROXY").is_ok();
 
@@ -190,8 +191,7 @@ async fn stop_threads<Ip>(
                 // result returned by the future, i.e. that actual
                 // result from start_dns_server()
                 if let Err(e) = res {
-                    // special anyhow error format to include cause but do not print backtrace
-                    error!("Error from dns server: {:#}", e)
+                    error!("Error from dns server: {}", e)
                 }
             }
             // error from tokio itself
@@ -208,9 +208,9 @@ async fn start_dns_server(
     rx: flume::Receiver<()>,
     no_proxy: bool,
     nameservers: Vec<ScopedIp>,
-) -> Result<(), anyhow::Error> {
+) -> AardvarkResult<()> {
     let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers);
-    server.run().await.context("run dns server")
+    server.run().await.wrap("run dns server")
 }
 
 async fn read_config_and_spawn(
@@ -220,9 +220,9 @@ async fn read_config_and_spawn(
     handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
     no_proxy: bool,
-) -> anyhow::Result<()> {
+) -> AardvarkResult<()> {
     let (conf, listen_ip_v4, listen_ip_v6) =
-        parse_configs(config_path, filter_search_domain).context("unable to parse config")?;
+        parse_configs(config_path, filter_search_domain).wrap("unable to parse config")?;
 
     // We store the `DNSBackend` in an `ArcSwap` so we can replace it when the configuration is
     // reloaded.
@@ -257,7 +257,7 @@ async fn read_config_and_spawn(
     }
 
     // get host nameservers
-    let nameservers = get_upstream_resolvers().context("failed to get upstream nameservers")?;
+    let nameservers = get_upstream_resolvers().wrap("failed to get upstream nameservers")?;
 
     stop_and_start_threads(
         port,
@@ -302,10 +302,10 @@ fn daemonize() -> Result<(), Error> {
 }
 
 // read /etc/resolv.conf and return all nameservers
-fn get_upstream_resolvers() -> Result<Vec<ScopedIp>, anyhow::Error> {
-    let mut f = File::open("/etc/resolv.conf").context("open resolv.conf")?;
+fn get_upstream_resolvers() -> AardvarkResult<Vec<ScopedIp>> {
+    let mut f = File::open("/etc/resolv.conf").wrap("open resolv.conf")?;
     let mut buf = Vec::with_capacity(4096);
-    f.read_to_end(&mut buf).context("read resolv.conf")?;
-    let conf = resolv_conf::Config::parse(buf).context("parse resolv.conf")?;
+    f.read_to_end(&mut buf).wrap("read resolv.conf")?;
+    let conf = resolv_conf::Config::parse(buf)?;
     Ok(conf.nameservers)
 }
