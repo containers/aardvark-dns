@@ -26,7 +26,7 @@ use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::OnceLock;
-use tokio::net::UdpSocket;
+use tokio::net::{TcpListener, UdpSocket};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 
@@ -158,7 +158,7 @@ where
         let network_name_ = network_name.clone();
         let ns = nameservers.to_owned();
         let addr = SocketAddr::new(ip.into(), port);
-        let sock = match UdpSocket::bind(addr).await {
+        let udp_sock = match UdpSocket::bind(addr).await {
             Ok(s) => s,
             Err(err) => {
                 errors.push(AardvarkError::wrap(
@@ -168,8 +168,29 @@ where
                 continue;
             }
         };
+
+        let tcp_sock = match TcpListener::bind(addr).await {
+            Ok(s) => s,
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to bind tcp listener on {addr}"),
+                    err.into(),
+                ));
+                continue;
+            }
+        };
+
         let handle = tokio::spawn(async move {
-            start_dns_server(network_name_, sock, backend, shutdown_rx, no_proxy, ns).await
+            start_dns_server(
+                network_name_,
+                udp_sock,
+                tcp_sock,
+                backend,
+                shutdown_rx,
+                no_proxy,
+                ns,
+            )
+            .await
         });
 
         thread_handles.insert((network_name, ip), (shutdown_tx, handle));
@@ -219,13 +240,17 @@ async fn stop_threads<Ip>(
 async fn start_dns_server(
     name: String,
     udp_socket: UdpSocket,
+    tcp_socket: TcpListener,
     backend: &'static ArcSwap<DNSBackend>,
     rx: flume::Receiver<()>,
     no_proxy: bool,
     nameservers: Vec<ScopedIp>,
 ) -> AardvarkResult<()> {
     let server = CoreDns::new(name, backend, rx, no_proxy, nameservers);
-    server.run(udp_socket).await.wrap("run dns server")
+    server
+        .run(udp_socket, tcp_socket)
+        .await
+        .wrap("run dns server")
 }
 
 async fn read_config_and_spawn(

@@ -7,8 +7,10 @@ use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
 use hickory_proto::{
+    iocompat::AsyncIoTokioAsStd,
     op::{Message, MessageType, ResponseCode},
     rr::{DNSClass, RData, Record, RecordType},
+    tcp::TcpStream,
     udp::{UdpClientStream, UdpStream},
     xfer::{dns_handle::DnsHandle, BufDnsStreamHandle, DnsRequest},
     DnsStreamHandle,
@@ -19,6 +21,7 @@ use resolv_conf::ScopedIp;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -54,8 +57,11 @@ impl CoreDns {
         }
     }
 
-    // only supports udp for now
-    pub async fn run(&self, udp_socket: UdpSocket) -> AardvarkResult<()> {
+    pub async fn run(
+        &self,
+        udp_socket: UdpSocket,
+        tcp_listener: TcpListener,
+    ) -> AardvarkResult<()> {
         let address = udp_socket.local_addr()?;
         let (mut receiver, sender_original) = UdpStream::with_bound(udp_socket, address);
 
@@ -75,9 +81,29 @@ impl CoreDns {
                     };
                     self.process_message(msg_received, &sender_original);
                 },
+                res = tcp_listener.accept() => {
+                    match res {
+                        Ok((sock,addr)) => {
+                            self.process_tcp_stream(sock, addr).await
+                        }
+                        Err(e) => {
+                            error!("Failed to accept new tcp connection: {e}");
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    async fn process_tcp_stream(&self, stream: tokio::net::TcpStream, peer: SocketAddr) {
+        let (mut hickory_stream, sender_original) =
+            TcpStream::from_stream(AsyncIoTokioAsStd(stream), peer);
+
+        while let Some(message) = hickory_stream.next().await {
+            self.process_message(message, &sender_original)
+        }
     }
 
     fn process_message(

@@ -71,6 +71,11 @@ load helpers
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
+	# check TCP support
+	run_in_container_netns "$a1_pid" "dig" "+tcp" "+short" "aone" "@$gw"
+	assert "$ip_a1"
+
+
 	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
