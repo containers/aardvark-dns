@@ -6,6 +6,7 @@ use arc_swap::Guard;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
+use hickory_proto::tcp::TcpClientStream;
 use hickory_proto::{
     iocompat::AsyncIoTokioAsStd,
     op::{Message, MessageType, ResponseCode},
@@ -36,6 +37,11 @@ pub struct CoreDns {
     rx: flume::Receiver<()>,               // kill switch receiver
     no_proxy: bool,                        // do not forward to external resolvers
     nameservers: Vec<ScopedIp>,            // host nameservers from resolv.conf
+}
+
+enum Protocol {
+    Udp,
+    Tcp,
 }
 
 impl CoreDns {
@@ -79,7 +85,7 @@ impl CoreDns {
                             continue;
                         }
                     };
-                    self.process_message(msg_received, &sender_original);
+                    self.process_message(msg_received, &sender_original, Protocol::Udp);
                 },
                 res = tcp_listener.accept() => {
                     match res {
@@ -102,7 +108,7 @@ impl CoreDns {
             TcpStream::from_stream(AsyncIoTokioAsStd(stream), peer);
 
         while let Some(message) = hickory_stream.next().await {
-            self.process_message(message, &sender_original)
+            self.process_message(message, &sender_original, Protocol::Tcp)
         }
     }
 
@@ -110,6 +116,7 @@ impl CoreDns {
         &self,
         msg_received: Result<SerialMessage, Error>,
         sender_original: &BufDnsStreamHandle,
+        proto: Protocol,
     ) {
         let msg = match msg_received {
             Ok(msg) => msg,
@@ -210,20 +217,34 @@ impl CoreDns {
             tokio::spawn(async move {
                 // forward dns request to hosts's /etc/resolv.conf
                 for nameserver in &upstream_resolvers {
-                    let connection =
-                        UdpClientStream::<UdpSocket>::new(SocketAddr::new(nameserver.into(), 53));
+                    let addr = SocketAddr::new(nameserver.into(), 53);
+                    let (client, handle) = match proto {
+                        Protocol::Udp => {
+                            let stream = UdpClientStream::<UdpSocket>::new(addr);
+                            let (cl, bg) = AsyncClient::connect(stream).await?;
+                            let handle = tokio::spawn(bg);
+                            (cl, handle)
+                        }
+                        Protocol::Tcp => {
+                            let (stream, sender) = TcpClientStream::<
+                                AsyncIoTokioAsStd<tokio::net::TcpStream>,
+                            >::new(addr);
+                            let (cl, bg) = AsyncClient::new(stream, sender, None).await?;
+                            let handle = tokio::spawn(bg);
+                            (cl, handle)
+                        }
+                    };
 
-                    if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
-                        tokio::spawn(req_sender);
-                        if let Some(resp) = forward_dns_req(cl, req.clone()).await {
-                            if reply(&mut sender, src_address, &resp).is_some() {
-                                // request resolved from following resolver so
-                                // break and don't try other resolvers
-                                break;
-                            }
+                    if let Some(resp) = forward_dns_req(client, req.clone()).await {
+                        if reply(&mut sender, src_address, &resp).is_some() {
+                            // request resolved from following resolver so
+                            // break and don't try other resolvers
+                            break;
                         }
                     }
+                    drop(handle);
                 }
+                Ok::<(), std::io::Error>(())
             });
         }
     }

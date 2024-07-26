@@ -82,6 +82,17 @@ load helpers
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
+
+	# check TCP support for forwarding
+	# note there is no guarantee that the forwarding is happening via TCP though
+	# TODO add custom dns record that is to big for udp so we can be sure...
+	run_in_container_netns "$a1_pid" "dig" "+tcp" "google.com" "@$gw"
+	# validate that we get an ipv4
+	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+	assert "$output" =~ "\(TCP\)" "server used TCP"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
 @test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
