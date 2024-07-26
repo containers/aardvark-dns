@@ -16,7 +16,6 @@ use hickory_proto::{
 use log::{debug, error, trace, warn};
 use resolv_conf;
 use resolv_conf::ScopedIp;
-use std::convert::TryInto;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -30,8 +29,6 @@ const CONTAINER_TTL: u32 = 60;
 
 pub struct CoreDns {
     network_name: String,                  // raw network name
-    address: IpAddr,                       // server address
-    port: u32,                             // server port
     backend: &'static ArcSwap<DNSBackend>, // server's data store
     rx: flume::Receiver<()>,               // kill switch receiver
     no_proxy: bool,                        // do not forward to external resolvers
@@ -42,8 +39,6 @@ impl CoreDns {
     // Most of the arg can be removed in design refactor.
     // so dont create a struct for this now.
     pub fn new(
-        address: IpAddr,
-        port: u32,
         network_name: String,
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
@@ -52,8 +47,6 @@ impl CoreDns {
     ) -> Self {
         CoreDns {
             network_name,
-            address,
-            port,
             backend,
             rx,
             no_proxy,
@@ -61,18 +54,10 @@ impl CoreDns {
         }
     }
 
-    pub async fn run(&mut self) -> AardvarkResult<()> {
-        self.register_port().await
-    }
-
-    // registers port supports udp for now
-    async fn register_port(&mut self) -> AardvarkResult<()> {
-        debug!("Starting listen on udp {:?}:{}", self.address, self.port);
-
-        // Do we need to serve on tcp anywhere in future ?
-        let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
-        let address = SocketAddr::new(self.address, self.port.try_into().unwrap());
-        let (mut receiver, sender_original) = UdpStream::with_bound(socket, address);
+    // only supports udp for now
+    pub async fn run(&self, udp_socket: UdpSocket) -> AardvarkResult<()> {
+        let address = udp_socket.local_addr()?;
+        let (mut receiver, sender_original) = UdpStream::with_bound(udp_socket, address);
 
         loop {
             tokio::select! {

@@ -2,6 +2,8 @@ use crate::backend::DNSBackend;
 use crate::config::constants::AARDVARK_PID_FILE;
 use crate::config::parse_configs;
 use crate::dns::coredns::CoreDns;
+use crate::error::AardvarkError;
+use crate::error::AardvarkErrorList;
 use crate::error::AardvarkResult;
 use crate::error::AardvarkWrap;
 use arc_swap::ArcSwap;
@@ -19,10 +21,12 @@ use std::io::Error;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
+use std::net::SocketAddr;
 use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::OnceLock;
+use tokio::net::UdpSocket;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 
@@ -62,7 +66,7 @@ pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
 #[tokio::main]
 pub async fn serve(
     config_path: &str,
-    port: u32,
+    port: u16,
     filter_search_domain: &str,
     ready: OwnedFd,
 ) -> AardvarkResult<()> {
@@ -103,7 +107,7 @@ pub async fn serve(
         .await
         {
             // do not exit here, we just keep running even if something failed
-            error!("{e:#}");
+            error!("{e}");
         };
     }
 }
@@ -113,13 +117,14 @@ pub async fn serve(
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
 /// corresponding to listen IPs that were added.
 async fn stop_and_start_threads<'a, Ip>(
-    port: u32,
+    port: u16,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
     nameservers: &'a [ScopedIp],
-) where
+) -> AardvarkResult<()>
+where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
 {
     let mut expected_threads = HashSet::new();
@@ -145,25 +150,36 @@ async fn stop_and_start_threads<'a, Ip>(
         .filter(|k| !thread_handles.contains_key(*k))
         .cloned()
         .collect();
+
+    let mut errors = AardvarkErrorList::new();
+
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
         let ns = nameservers.to_owned();
+        let addr = SocketAddr::new(ip.into(), port);
+        let sock = match UdpSocket::bind(addr).await {
+            Ok(s) => s,
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to bind udp listener on {addr}"),
+                    err.into(),
+                ));
+                continue;
+            }
+        };
         let handle = tokio::spawn(async move {
-            start_dns_server(
-                network_name_,
-                ip.into(),
-                backend,
-                port,
-                shutdown_rx,
-                no_proxy,
-                ns,
-            )
-            .await
+            start_dns_server(network_name_, sock, backend, shutdown_rx, no_proxy, ns).await
         });
 
         thread_handles.insert((network_name, ip), (shutdown_tx, handle));
     }
+
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    Err(AardvarkError::List(errors))
 }
 
 /// # Stop DNS server threads
@@ -202,20 +218,19 @@ async fn stop_threads<Ip>(
 
 async fn start_dns_server(
     name: String,
-    addr: IpAddr,
+    udp_socket: UdpSocket,
     backend: &'static ArcSwap<DNSBackend>,
-    port: u32,
     rx: flume::Receiver<()>,
     no_proxy: bool,
     nameservers: Vec<ScopedIp>,
 ) -> AardvarkResult<()> {
-    let mut server = CoreDns::new(addr, port, name, backend, rx, no_proxy, nameservers);
-    server.run().await.wrap("run dns server")
+    let server = CoreDns::new(name, backend, rx, no_proxy, nameservers);
+    server.run(udp_socket).await.wrap("run dns server")
 }
 
 async fn read_config_and_spawn(
     config_path: &str,
-    port: u32,
+    port: u16,
     filter_search_domain: &str,
     handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
@@ -256,10 +271,21 @@ async fn read_config_and_spawn(
         process::exit(0);
     }
 
-    // get host nameservers
-    let nameservers = get_upstream_resolvers().wrap("failed to get upstream nameservers")?;
+    let mut errors = AardvarkErrorList::new();
 
-    stop_and_start_threads(
+    // get host nameservers
+    let nameservers = match get_upstream_resolvers() {
+        Ok(ns) => ns,
+        Err(err) => {
+            errors.push(AardvarkError::wrap(
+                "failed to get upstream nameservers, dns forwarding will not work",
+                err,
+            ));
+            Vec::new()
+        }
+    };
+
+    if let Err(err) = stop_and_start_threads(
         port,
         backend,
         listen_ip_v4,
@@ -267,9 +293,12 @@ async fn read_config_and_spawn(
         no_proxy,
         &nameservers,
     )
-    .await;
+    .await
+    {
+        errors.push(err)
+    };
 
-    stop_and_start_threads(
+    if let Err(err) = stop_and_start_threads(
         port,
         backend,
         listen_ip_v6,
@@ -277,9 +306,16 @@ async fn read_config_and_spawn(
         no_proxy,
         &nameservers,
     )
-    .await;
+    .await
+    {
+        errors.push(err)
+    };
 
-    Ok(())
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    Err(AardvarkError::List(errors))
 }
 
 // creates new session and put /dev/null on the stdio streams
