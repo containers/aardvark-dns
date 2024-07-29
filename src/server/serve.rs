@@ -25,6 +25,7 @@ use std::net::SocketAddr;
 use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::OnceLock;
 use tokio::net::{TcpListener, UdpSocket};
 use tokio::signal::unix::{signal, SignalKind};
@@ -75,6 +76,7 @@ pub async fn serve(
 
     let mut handles_v4 = HashMap::new();
     let mut handles_v6 = HashMap::new();
+    let nameservers = Arc::new(Mutex::new(Vec::new()));
 
     read_config_and_spawn(
         config_path,
@@ -82,6 +84,7 @@ pub async fn serve(
         filter_search_domain,
         &mut handles_v4,
         &mut handles_v6,
+        nameservers.clone(),
         no_proxy,
     )
     .await?;
@@ -102,6 +105,7 @@ pub async fn serve(
             filter_search_domain,
             &mut handles_v4,
             &mut handles_v6,
+            nameservers.clone(),
             no_proxy,
         )
         .await
@@ -116,13 +120,13 @@ pub async fn serve(
 ///
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
 /// corresponding to listen IPs that were added.
-async fn stop_and_start_threads<'a, Ip>(
+async fn stop_and_start_threads<Ip>(
     port: u16,
     backend: &'static ArcSwap<DNSBackend>,
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
-    nameservers: &'a [ScopedIp],
+    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
 ) -> AardvarkResult<()>
 where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
@@ -156,7 +160,7 @@ where
     for (network_name, ip) in to_start {
         let (shutdown_tx, shutdown_rx) = flume::bounded(0);
         let network_name_ = network_name.clone();
-        let ns = nameservers.to_owned();
+        let ns = nameservers.clone();
         let addr = SocketAddr::new(ip.into(), port);
         let udp_sock = match UdpSocket::bind(addr).await {
             Ok(s) => s,
@@ -244,7 +248,7 @@ async fn start_dns_server(
     backend: &'static ArcSwap<DNSBackend>,
     rx: flume::Receiver<()>,
     no_proxy: bool,
-    nameservers: Vec<ScopedIp>,
+    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
 ) -> AardvarkResult<()> {
     let server = CoreDns::new(name, backend, rx, no_proxy, nameservers);
     server
@@ -259,6 +263,7 @@ async fn read_config_and_spawn(
     filter_search_domain: &str,
     handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
+    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
     no_proxy: bool,
 ) -> AardvarkResult<()> {
     let (conf, listen_ip_v4, listen_ip_v6) =
@@ -299,7 +304,7 @@ async fn read_config_and_spawn(
     let mut errors = AardvarkErrorList::new();
 
     // get host nameservers
-    let nameservers = match get_upstream_resolvers() {
+    let upstream_resolvers = match get_upstream_resolvers() {
         Ok(ns) => ns,
         Err(err) => {
             errors.push(AardvarkError::wrap(
@@ -310,13 +315,18 @@ async fn read_config_and_spawn(
         }
     };
 
+    {
+        // use new scope to only lock for a short time
+        *nameservers.lock().expect("lock nameservers") = upstream_resolvers;
+    }
+
     if let Err(err) = stop_and_start_threads(
         port,
         backend,
         listen_ip_v4,
         handles_v4,
         no_proxy,
-        &nameservers,
+        nameservers.clone(),
     )
     .await
     {
@@ -329,7 +339,7 @@ async fn read_config_and_spawn(
         listen_ip_v6,
         handles_v6,
         no_proxy,
-        &nameservers,
+        nameservers,
     )
     .await
     {
