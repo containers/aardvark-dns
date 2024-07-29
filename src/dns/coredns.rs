@@ -1,13 +1,17 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
+use crate::error::AardvarkResult;
 use arc_swap::ArcSwap;
 use arc_swap::Guard;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
+use hickory_proto::tcp::TcpClientStream;
 use hickory_proto::{
+    iocompat::AsyncIoTokioAsStd,
     op::{Message, MessageType, ResponseCode},
     rr::{DNSClass, RData, Record, RecordType},
+    tcp::TcpStream,
     udp::{UdpClientStream, UdpStream},
     xfer::{dns_handle::DnsHandle, BufDnsStreamHandle, DnsRequest},
     DnsStreamHandle,
@@ -15,10 +19,10 @@ use hickory_proto::{
 use log::{debug, error, trace, warn};
 use resolv_conf;
 use resolv_conf::ScopedIp;
-use std::convert::TryInto;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -29,20 +33,21 @@ const CONTAINER_TTL: u32 = 60;
 
 pub struct CoreDns {
     network_name: String,                  // raw network name
-    address: IpAddr,                       // server address
-    port: u32,                             // server port
     backend: &'static ArcSwap<DNSBackend>, // server's data store
     rx: flume::Receiver<()>,               // kill switch receiver
     no_proxy: bool,                        // do not forward to external resolvers
     nameservers: Vec<ScopedIp>,            // host nameservers from resolv.conf
 }
 
+enum Protocol {
+    Udp,
+    Tcp,
+}
+
 impl CoreDns {
     // Most of the arg can be removed in design refactor.
     // so dont create a struct for this now.
     pub fn new(
-        address: IpAddr,
-        port: u32,
         network_name: String,
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
@@ -51,8 +56,6 @@ impl CoreDns {
     ) -> Self {
         CoreDns {
             network_name,
-            address,
-            port,
             backend,
             rx,
             no_proxy,
@@ -60,18 +63,13 @@ impl CoreDns {
         }
     }
 
-    pub async fn run(&mut self) -> anyhow::Result<()> {
-        self.register_port().await
-    }
-
-    // registers port supports udp for now
-    async fn register_port(&mut self) -> anyhow::Result<()> {
-        debug!("Starting listen on udp {:?}:{}", self.address, self.port);
-
-        // Do we need to serve on tcp anywhere in future ?
-        let socket = UdpSocket::bind(format!("{}:{}", self.address, self.port)).await?;
-        let address = SocketAddr::new(self.address, self.port.try_into().unwrap());
-        let (mut receiver, sender_original) = UdpStream::with_bound(socket, address);
+    pub async fn run(
+        &self,
+        udp_socket: UdpSocket,
+        tcp_listener: TcpListener,
+    ) -> AardvarkResult<()> {
+        let address = udp_socket.local_addr()?;
+        let (mut receiver, sender_original) = UdpStream::with_bound(udp_socket, address);
 
         loop {
             tokio::select! {
@@ -87,17 +85,38 @@ impl CoreDns {
                             continue;
                         }
                     };
-                    self.process_message(msg_received, &sender_original);
+                    self.process_message(msg_received, &sender_original, Protocol::Udp);
                 },
+                res = tcp_listener.accept() => {
+                    match res {
+                        Ok((sock,addr)) => {
+                            self.process_tcp_stream(sock, addr).await
+                        }
+                        Err(e) => {
+                            error!("Failed to accept new tcp connection: {e}");
+                            break;
+                        }
+                    }
+                }
             }
         }
         Ok(())
+    }
+
+    async fn process_tcp_stream(&self, stream: tokio::net::TcpStream, peer: SocketAddr) {
+        let (mut hickory_stream, sender_original) =
+            TcpStream::from_stream(AsyncIoTokioAsStd(stream), peer);
+
+        while let Some(message) = hickory_stream.next().await {
+            self.process_message(message, &sender_original, Protocol::Tcp)
+        }
     }
 
     fn process_message(
         &self,
         msg_received: Result<SerialMessage, Error>,
         sender_original: &BufDnsStreamHandle,
+        proto: Protocol,
     ) {
         let msg = match msg_received {
             Ok(msg) => msg,
@@ -198,20 +217,34 @@ impl CoreDns {
             tokio::spawn(async move {
                 // forward dns request to hosts's /etc/resolv.conf
                 for nameserver in &upstream_resolvers {
-                    let connection =
-                        UdpClientStream::<UdpSocket>::new(SocketAddr::new(nameserver.into(), 53));
+                    let addr = SocketAddr::new(nameserver.into(), 53);
+                    let (client, handle) = match proto {
+                        Protocol::Udp => {
+                            let stream = UdpClientStream::<UdpSocket>::new(addr);
+                            let (cl, bg) = AsyncClient::connect(stream).await?;
+                            let handle = tokio::spawn(bg);
+                            (cl, handle)
+                        }
+                        Protocol::Tcp => {
+                            let (stream, sender) = TcpClientStream::<
+                                AsyncIoTokioAsStd<tokio::net::TcpStream>,
+                            >::new(addr);
+                            let (cl, bg) = AsyncClient::new(stream, sender, None).await?;
+                            let handle = tokio::spawn(bg);
+                            (cl, handle)
+                        }
+                    };
 
-                    if let Ok((cl, req_sender)) = AsyncClient::connect(connection).await {
-                        tokio::spawn(req_sender);
-                        if let Some(resp) = forward_dns_req(cl, req.clone()).await {
-                            if reply(&mut sender, src_address, &resp).is_some() {
-                                // request resolved from following resolver so
-                                // break and don't try other resolvers
-                                break;
-                            }
+                    if let Some(resp) = forward_dns_req(client, req.clone()).await {
+                        if reply(&mut sender, src_address, &resp).is_some() {
+                            // request resolved from following resolver so
+                            // break and don't try other resolvers
+                            break;
                         }
                     }
+                    drop(handle);
                 }
+                Ok::<(), std::io::Error>(())
             });
         }
     }

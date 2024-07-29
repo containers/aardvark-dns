@@ -15,7 +15,7 @@ struct Opts {
     config: Option<String>,
     /// Host port for aardvark servers, defaults to 5533
     #[clap(short, long)]
-    port: Option<u32>,
+    port: Option<u16>,
     /// Filters search domain for backward compatiblity with dnsname/dnsmasq
     #[clap(short, long)]
     filter_search_domain: Option<String>,
@@ -65,7 +65,7 @@ fn main() {
     let opts = Opts::parse();
 
     let dir = opts.config.unwrap_or_else(|| String::from("/dev/stdin"));
-    let port = opts.port.unwrap_or(5533_u32);
+    let port = opts.port.unwrap_or(5533_u16);
     let filter_search_domain = opts
         .filter_search_domain
         .unwrap_or_else(|| String::from(".dns.podman"));

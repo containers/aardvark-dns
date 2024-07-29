@@ -18,7 +18,7 @@ impl Run {
     pub fn exec(
         &self,
         input_dir: String,
-        port: u32,
+        port: u16,
         filter_search_domain: String,
     ) -> Result<(), Error> {
         // create a temporary path for unix socket

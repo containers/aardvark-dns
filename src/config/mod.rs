@@ -1,4 +1,5 @@
 use crate::backend::DNSBackend;
+use crate::error::{AardvarkError, AardvarkResult};
 use log::warn;
 use std::collections::HashMap;
 use std::fs::{metadata, read_dir, read_to_string};
@@ -22,19 +23,16 @@ pub mod constants;
 pub fn parse_configs(
     dir: &str,
     filter_search_domain: &str,
-) -> Result<
-    (
-        DNSBackend,
-        HashMap<String, Vec<Ipv4Addr>>,
-        HashMap<String, Vec<Ipv6Addr>>,
-    ),
-    std::io::Error,
-> {
+) -> AardvarkResult<(
+    DNSBackend,
+    HashMap<String, Vec<Ipv4Addr>>,
+    HashMap<String, Vec<Ipv6Addr>>,
+)> {
     if !metadata(dir)?.is_dir() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("config directory {} must exist and be a directory", dir),
-        ));
+        return Err(AardvarkError::msg(format!(
+            "config directory {} must exist and be a directory",
+            dir
+        )));
     }
 
     let mut network_membership: HashMap<String, Vec<String>> = HashMap::new();
@@ -82,13 +80,11 @@ pub fn parse_configs(
 			    }
 			    name_full.strip_suffix(constants::INTERNAL_SUFFIX).unwrap_or(&name_full).to_string()
 			},
-                        None => return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
+                        None => return Err(AardvarkError::msg(
                             format!("configuration file {} name has non-UTF8 characters", s.to_string_lossy()),
                         )),
                     },
-                    None => return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    None => return Err(AardvarkError::msg(
                         format!("configuration file {} does not have a file name, cannot identify network name", cfg.path().to_string_lossy()),
                         )),
                 };
@@ -191,13 +187,10 @@ pub fn parse_configs(
                 }
             }
             None => {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!(
+                return Err(AardvarkError::msg(format!(
                     "Container ID {} has an entry in IPs table, but not network membership table",
                     ctr_id
-                ),
-                ))
+                )))
             }
         }
     }

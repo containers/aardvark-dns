@@ -10,18 +10,16 @@ mod tests {
 
     use aardvark_dns::backend::{DNSBackend, DNSResult};
     use aardvark_dns::config;
+    use aardvark_dns::error::AardvarkResult;
     use std::str::FromStr;
 
     fn parse_configs(
         dir: &str,
-    ) -> Result<
-        (
-            DNSBackend,
-            HashMap<String, Vec<Ipv4Addr>>,
-            HashMap<String, Vec<Ipv6Addr>>,
-        ),
-        std::io::Error,
-    > {
+    ) -> AardvarkResult<(
+        DNSBackend,
+        HashMap<String, Vec<Ipv4Addr>>,
+        HashMap<String, Vec<Ipv6Addr>>,
+    )> {
         config::parse_configs(dir, "")
     }
 
