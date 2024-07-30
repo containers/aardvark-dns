@@ -22,6 +22,7 @@ use resolv_conf::ScopedIp;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::sync::Mutex;
 use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
@@ -32,11 +33,11 @@ use tokio::net::UdpSocket;
 const CONTAINER_TTL: u32 = 60;
 
 pub struct CoreDns {
-    network_name: String,                  // raw network name
-    backend: &'static ArcSwap<DNSBackend>, // server's data store
-    rx: flume::Receiver<()>,               // kill switch receiver
-    no_proxy: bool,                        // do not forward to external resolvers
-    nameservers: Vec<ScopedIp>,            // host nameservers from resolv.conf
+    network_name: String,                   // raw network name
+    backend: &'static ArcSwap<DNSBackend>,  // server's data store
+    rx: flume::Receiver<()>,                // kill switch receiver
+    no_proxy: bool,                         // do not forward to external resolvers
+    nameservers: Arc<Mutex<Vec<ScopedIp>>>, // host nameservers from resolv.conf
 }
 
 enum Protocol {
@@ -52,7 +53,7 @@ impl CoreDns {
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
         no_proxy: bool,
-        nameservers: Vec<ScopedIp>,
+        nameservers: Arc<Mutex<Vec<ScopedIp>>>,
     ) -> Self {
         CoreDns {
             network_name,
@@ -193,30 +194,28 @@ impl CoreDns {
                 "Forwarding dns request for {} type: {}",
                 &request_name_string, record_type
             );
-            let mut upstream_resolvers = self.nameservers.clone();
-            let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
+            let mut nameservers: Vec<ScopedIp> = Vec::new();
             // Add resolvers configured for container
             if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
                 for dns_server in dns_servers.iter() {
-                    nameservers_scoped.push(ScopedIp::from(*dns_server));
+                    nameservers.push(ScopedIp::from(*dns_server));
                 }
                 // Add network scoped resolvers only if container specific resolvers were not configured
             } else if let Some(network_dns_servers) =
                 backend.get_network_scoped_resolvers(&src_address.ip())
             {
                 for dns_server in network_dns_servers.iter() {
-                    nameservers_scoped.push(ScopedIp::from(*dns_server));
+                    nameservers.push(ScopedIp::from(*dns_server));
                 }
             }
-            // Override host resolvers with custom resolvers if any  were
-            // configured for container or network.
-            if !nameservers_scoped.is_empty() {
-                upstream_resolvers = nameservers_scoped;
+            // Use host resolvers if no custom resolvers are set for the container.
+            if nameservers.is_empty() {
+                nameservers.clone_from(&self.nameservers.lock().expect("lock nameservers"));
             }
 
             tokio::spawn(async move {
                 // forward dns request to hosts's /etc/resolv.conf
-                for nameserver in &upstream_resolvers {
+                for nameserver in &nameservers {
                     let addr = SocketAddr::new(nameserver.into(), 53);
                     let (client, handle) = match proto {
                         Protocol::Udp => {
