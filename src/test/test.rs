@@ -55,12 +55,9 @@ mod tests {
         }
     }
     #[test]
-    // Parse bad config files must fail
+    // Parse bad config files should not hard error
     fn test_parsing_bad_config_files() {
-        match parse_configs("src/test/config/podman_bad_config") {
-            Ok((_, _, _)) => panic!("parsing bad config must fail"),
-            Err(_) => {}
-        }
+        parse_configs("src/test/config/podman_bad_config").expect("config parsing failed");
     }
     /* -------------------------------------------- */
     // -------Verify backend custom dns server ----
