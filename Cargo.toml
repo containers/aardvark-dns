@@ -9,7 +9,7 @@ readme = "README.md"
 description = "A container-focused DNS server"
 homepage = "https://github.com/containers/aardvark-dns"
 repository = "https://github.com/containers/aardvark-dns"
-categories = ["containers", "networking", "dns", "podman"]
+categories = ["virtualization"]
 exclude = ["/.cirrus.yml", "/.github/*"]
 
 [package.metadata.vendor-filter]
