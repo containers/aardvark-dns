@@ -1,5 +1,12 @@
 # Release Notes
 
+## v1.12.0
+
+* Dependency updates
+* Improve all around error handling and logging
+* Added TCP/IP support
+* Update upsteam resolvers on each refresh
+
 ## v1.11.0
 * Do not allow "internal" networks to access DNS
 * On SIGHUP, stop AV threads no longer needed and reload in memory those that are 
