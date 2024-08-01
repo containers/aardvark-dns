@@ -1,6 +1,6 @@
 use crate::backend::DNSBackend;
 use crate::error::{AardvarkError, AardvarkResult};
-use log::warn;
+use log::error;
 use std::collections::HashMap;
 use std::fs::{metadata, read_dir, read_to_string};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -64,7 +64,19 @@ pub fn parse_configs(
                         continue;
                     }
                 }
-                let parsed_network_config = parse_config(cfg.path().as_path())?;
+                let parsed_network_config = match parse_config(cfg.path().as_path()) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        if e.kind() != std::io::ErrorKind::NotFound {
+                            error!(
+                                "Error reading config file {:?} for server update: {}",
+                                cfg.path(),
+                                e
+                            )
+                        }
+                        continue;
+                    }
+                };
 
                 let mut internal = false;
 
@@ -171,7 +183,11 @@ pub fn parse_configs(
                     network_is_internal.insert(network_name.clone(), internal);
                 }
             }
-            Err(e) => warn!("Error reading config file for server update: {}", e),
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    error!("Error listing config file for server update: {}", e)
+                }
+            }
         }
     }
 
