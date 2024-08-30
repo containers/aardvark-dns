@@ -23,6 +23,7 @@ use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
@@ -108,8 +109,21 @@ impl CoreDns {
         let (mut hickory_stream, sender_original) =
             TcpStream::from_stream(AsyncIoTokioAsStd(stream), peer);
 
-        while let Some(message) = hickory_stream.next().await {
-            self.process_message(message, &sender_original, Protocol::Tcp)
+        // It is possible for a client to keep the tcp socket open forever and never send any data,
+        // we do not want this so add a 3s timeout then we close the socket.
+        match tokio::time::timeout(Duration::from_secs(3), hickory_stream.next()).await {
+            Ok(message) => {
+                if let Some(msg) = message {
+                    self.process_message(msg, &sender_original, Protocol::Tcp);
+                    // The API is a bit strange, first time we call next we get the message,
+                    // but we must call again to send our reply back
+                    hickory_stream.next().await;
+                }
+            }
+            Err(_) => debug!(
+                "Tcp connection {} was cancelled after 3s as it took to long to receive message",
+                peer
+            ),
         }
     }
 
