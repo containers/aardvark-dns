@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.12.2
+
+* This releases fixes a security issue (CVE-2024-8418) where tcp connections where not handled correctly which allowed a container to block dns queries for other clients on the same network [#500](https://github.com/containers/aardvark-dns/issues/500). Versions before v1.12.0 are unaffected as they do not have tcp support.
+
 ## v1.12.1
 
 * Fixed problem with categories in Cargo.toml that prevented us from publishing v1.12.0
@@ -13,7 +17,7 @@
 
 ## v1.11.0
 * Do not allow "internal" networks to access DNS
-* On SIGHUP, stop AV threads no longer needed and reload in memory those that are 
+* On SIGHUP, stop AV threads no longer needed and reload in memory those that are
 * updated dependencies
 
 ## v1.10.0
