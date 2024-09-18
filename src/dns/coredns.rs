@@ -98,6 +98,7 @@ impl CoreDns {
                 },
                 v = receiver.next() => {
                     let msg_received = match v {
+                        Some(Err(err)) if err.kind() == std::io::ErrorKind::BrokenPipe => {break},
                         Some(value) => value,
                         None => {
                             // None received, nothing to process so continue
