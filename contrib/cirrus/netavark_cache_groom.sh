@@ -11,13 +11,13 @@ set -eo pipefail
 SCRIPT_DIRPATH=$(dirname ${BASH_SOURCE[0]})
 source $SCRIPT_DIRPATH/lib.sh
 
-if [[ "$CIRRUS_CI" != true ]] || [[ -z "$DEST_BRANCH" ]]; then
+if [[ "$CIRRUS_CI" != true ]] || [[ -z "$NETAVARK_BRANCH" ]]; then
   die "Script is not intended for use outside of Cirrus-CI"
 fi
 
 SCRIPT_DEST=$SCRIPT_DIRPATH/cache_groom.sh
 showrun curl --location --silent --show-error -o $SCRIPT_DEST \
-  https://raw.githubusercontent.com/containers/netavark/$DEST_BRANCH/contrib/cirrus/cache_groom.sh
+  https://raw.githubusercontent.com/containers/netavark/$NETAVARK_BRANCH/contrib/cirrus/cache_groom.sh
 
 # Certain common automation library calls assume execution from this file
 exec bash $SCRIPT_DEST
