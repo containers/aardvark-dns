@@ -41,8 +41,9 @@ load helpers
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
 	create_container "$config_a1"
 	a1_pid=$CONTAINER_NS_PID
-	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw"
-	assert "$ip_a1"
+	run_in_container_netns "$a1_pid" "dig" "aone" "@$gw"
+	# check for TTL 0 here as well
+	assert "$output" =~ "aone\.[[:space:]]*0[[:space:]]*IN[[:space:]]*A[[:space:]]*$ip_a1"
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"

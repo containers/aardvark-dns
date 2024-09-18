@@ -27,12 +27,6 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
-// Containers can be recreated with different ips quickly so
-// do not let the clients cache to dns response for to long,
-// aardvark-dns runs on the same host so caching is not that important.
-// see https://github.com/containers/netavark/discussions/644
-const CONTAINER_TTL: u32 = 60;
-
 pub struct CoreDns {
     rx: flume::Receiver<()>, // kill switch receiver
     inner: CoreDnsData,
@@ -434,7 +428,6 @@ fn reply_ptr(
                     let mut record = Record::new();
                     record
                         .set_name(Name::from_str_relaxed(name).unwrap_or_default())
-                        .set_ttl(CONTAINER_TTL)
                         .set_rr_type(RecordType::PTR)
                         .set_dns_class(DNSClass::IN)
                         .set_data(Some(RData::PTR(rdata::PTR(answer))));
@@ -481,9 +474,12 @@ fn reply_ip<'a>(
         for record_addr in resolved_ip_list {
             if let IpAddr::V4(ipv4) = record_addr {
                 let mut record = Record::new();
+                // DO NOT SET A TTL, the default is 0 which means client should not cache it.
+                // Containers can be be restarted with a different ip at any time so allowing
+                // caches here doesn't make much sense given the server is local and queries
+                // should be fast enough anyway.
                 record
                     .set_name(request_name.clone())
-                    .set_ttl(CONTAINER_TTL)
                     .set_rr_type(RecordType::A)
                     .set_dns_class(DNSClass::IN)
                     .set_data(Some(RData::A(rdata::A(ipv4))));
@@ -496,7 +492,6 @@ fn reply_ip<'a>(
                 let mut record = Record::new();
                 record
                     .set_name(request_name.clone())
-                    .set_ttl(CONTAINER_TTL)
                     .set_rr_type(RecordType::AAAA)
                     .set_dns_class(DNSClass::IN)
                     .set_data(Some(RData::AAAA(rdata::AAAA(ipv6))));
