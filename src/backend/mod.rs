@@ -29,19 +29,6 @@ pub struct DNSBackend {
     pub search_domain: String,
 }
 
-pub enum DNSResult {
-    // We know the IP address of the requester and what networks they are in.
-    // Here's a vector of IPs corresponding to your query.
-    Success(Vec<IpAddr>),
-    // We know the IP address of the requester and what networks they are in.
-    // However, there were no results for the requested name to look up.
-    NXDomain,
-    // We do not know the IP address of the requester.
-    NoSuchIP,
-    // Other, unspecified error occurred.
-    Error(String),
-}
-
 impl DNSBackend {
     // Create a new backend from the given set of network mappings.
     pub fn new(
@@ -71,12 +58,8 @@ impl DNSBackend {
     }
 
     // Handle a single DNS lookup made by a given IP.
-    // The name being looked up *must* have the TLD used by the DNS server
-    // stripped.
-    // TODO: right now this returns v4 and v6 addresses intermixed and relies on
-    // the caller to sort through them; we could add a v6 bool as an argument
-    // and do it here instead.
-    pub fn lookup(&self, requester: &IpAddr, entry: &str) -> DNSResult {
+    // Returns all the ips for the given entry name
+    pub fn lookup(&self, requester: &IpAddr, entry: &str) -> Option<Vec<IpAddr>> {
         // Normalize lookup entry to lowercase.
         let mut name = entry.to_lowercase();
 
@@ -89,7 +72,7 @@ impl DNSBackend {
 
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
-            None => return DNSResult::NoSuchIP,
+            None => return None,
         };
 
         let mut results: Vec<IpAddr> = Vec::new();
@@ -116,10 +99,10 @@ impl DNSBackend {
         }
 
         if results.is_empty() {
-            return DNSResult::NXDomain;
+            return None;
         }
 
-        DNSResult::Success(results)
+        Some(results)
     }
 
     // Returns list of network resolvers for a particular container
