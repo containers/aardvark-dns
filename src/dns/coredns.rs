@@ -7,6 +7,7 @@ use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
 use hickory_proto::tcp::TcpClientStream;
+use hickory_proto::udp::DnsUdpSocket;
 use hickory_proto::{
     iocompat::AsyncIoTokioAsStd,
     op::{Message, MessageType, ResponseCode},
@@ -51,6 +52,16 @@ enum Protocol {
     Tcp,
 }
 
+trait CoreDnsUdp: DnsUdpSocket {
+    fn local_addr(&self) -> std::io::Result<SocketAddr>;
+}
+
+impl CoreDnsUdp for tokio::net::UdpSocket {
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.local_addr()
+    }
+}
+
 impl CoreDns {
     // Most of the arg can be removed in design refactor.
     // so dont create a struct for this now.
@@ -74,7 +85,7 @@ impl CoreDns {
 
     pub async fn run(
         &self,
-        udp_socket: UdpSocket,
+        udp_socket: impl CoreDnsUdp + 'static,
         tcp_listener: TcpListener,
     ) -> AardvarkResult<()> {
         let address = udp_socket.local_addr()?;
@@ -508,4 +519,104 @@ fn reply_ip<'a>(
         }
     }
     Some(req)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        fmt::Display,
+        future::ready,
+        io,
+        sync::OnceLock,
+        task::{Context, Poll},
+    };
+
+    use clap::error::ErrorKind;
+    use hickory_proto::{op::Query, xfer::DnsRequestSender};
+    use tokio::time::error::Elapsed;
+
+    use super::*;
+
+    struct TestUdp;
+
+    #[derive(Debug)]
+    struct BrokenPipeError;
+
+    impl Display for BrokenPipeError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "BrokenPipeError")
+        }
+    }
+
+    impl std::error::Error for BrokenPipeError {}
+
+    impl DnsUdpSocket for TestUdp {
+        type Time = hickory_proto::TokioTime;
+
+        fn poll_recv_from(
+            &self,
+            cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<io::Result<(usize, SocketAddr)>> {
+            Poll::Ready(io::Result::Err(Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                BrokenPipeError,
+            )))
+        }
+
+        fn poll_send_to(
+            &self,
+            cx: &mut Context<'_>,
+            buf: &[u8],
+            target: SocketAddr,
+        ) -> Poll<io::Result<usize>> {
+            unimplemented!()
+        }
+    }
+
+    impl CoreDnsUdp for TestUdp {
+        fn local_addr(&self) -> std::io::Result<SocketAddr> {
+            Ok("127.0.0.1:0".parse().unwrap())
+        }
+    }
+
+    // we need 2 threads or tokio::spawn will block since it never yields
+    #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 2))]
+    async fn broken_pipe_in_udp_socket_exits() {
+        static DNSBACKEND: OnceLock<ArcSwap<DNSBackend>> = OnceLock::new();
+        let backend = DNSBACKEND.get_or_init(|| {
+            ArcSwap::from(Arc::new(DNSBackend {
+                ctr_dns_server: Default::default(),
+                network_dns_server: Default::default(),
+                network_is_internal: Default::default(),
+                search_domain: Default::default(),
+                ip_mappings: Default::default(),
+                name_mappings: Default::default(),
+                reverse_mappings: Default::default(),
+            }))
+        });
+
+        let (_tx, rx) = flume::unbounded();
+
+        let dns = CoreDns::new(
+            "network_name".to_string(),
+            backend,
+            rx,
+            false,
+            Arc::new(Mutex::new(Vec::new())),
+        );
+
+        let tcp_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+
+        let handle = tokio::spawn(async move { dns.run(TestUdp, tcp_listener).await.unwrap() });
+        let abort_handle = handle.abort_handle();
+
+        // timeout or abort
+        let result = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        if let Err(_) = result {
+            // timed out...
+            abort_handle.abort();
+            panic!("tokio stuck in a loop");
+        }
+    }
 }
