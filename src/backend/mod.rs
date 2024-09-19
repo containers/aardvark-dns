@@ -59,7 +59,12 @@ impl DNSBackend {
 
     // Handle a single DNS lookup made by a given IP.
     // Returns all the ips for the given entry name
-    pub fn lookup(&self, requester: &IpAddr, entry: &str) -> Option<Vec<IpAddr>> {
+    pub fn lookup(
+        &self,
+        requester: &IpAddr,
+        network_name: &str,
+        entry: &str,
+    ) -> Option<Vec<IpAddr>> {
         // Normalize lookup entry to lowercase.
         let mut name = entry.to_lowercase();
 
@@ -70,9 +75,21 @@ impl DNSBackend {
             name.truncate(name.len() - self.search_domain.len())
         }
 
+        // if this is a fully qualified name, remove dots so backend can perform search
+        if name.ends_with(".") {
+            name.truncate(name.len() - 1)
+        }
+
+        let owned_netns: Vec<String>;
+
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
-            None => return None,
+            // no source ip found let's just allow access to the current network where the request was made
+            // On newer rust versions in CI we can return &vec![network_name.to_string()] directly without the extra assignment to the outer scope
+            None => {
+                owned_netns = vec![network_name.to_string()];
+                &owned_netns
+            }
         };
 
         let mut results: Vec<IpAddr> = Vec::new();
@@ -85,14 +102,7 @@ impl DNSBackend {
                     continue;
                 }
             };
-            // if this is a fully qualified name, remove dots so backend can perform search
-            if !name.is_empty() {
-                if let Some(lastchar) = name.chars().last() {
-                    if lastchar == '.' {
-                        name = (name[0..name.len() - 1]).to_string();
-                    }
-                }
-            }
+
             if let Some(addrs) = net_names.get(&name) {
                 results.append(&mut addrs.clone());
             }

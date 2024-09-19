@@ -151,7 +151,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "condescendingnash");
+            .lookup(&IP_10_88_0_2, "", "condescendingnash");
         assert_eq!(res, Some(vec![IP_10_88_0_2]));
     }
     #[test]
@@ -165,7 +165,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "helloworld");
+            .lookup(&IP_10_88_0_2, "", "helloworld");
         assert_eq!(res, Some(vec![IP_10_88_0_5]));
     }
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "HELLOWORLD");
+            .lookup(&IP_10_88_0_2, "", "HELLOWORLD");
         assert_eq!(res, Some(vec![IP_10_88_0_5]));
     }
     #[test]
@@ -189,7 +189,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "somebadquery");
+            .lookup(&IP_10_88_0_2, "", "somebadquery");
         assert_eq!(res, None);
     }
     #[test]
@@ -202,7 +202,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "trustingzhukovsky");
+            .lookup(&IP_10_88_0_2, "", "trustingzhukovsky");
         assert_eq!(res, Some(vec![IP_10_88_0_4]));
     }
     #[test]
@@ -215,7 +215,7 @@ mod tests {
         let res = parse_configs("src/test/config/podman")
             .expect("parse config error")
             .0
-            .lookup(&IP_10_88_0_2, "ctr1");
+            .lookup(&IP_10_88_0_2, "", "ctr1");
         assert_eq!(res, Some(vec![IP_10_88_0_4]));
     }
     #[test]
@@ -228,9 +228,9 @@ mod tests {
         assert!(conf.1.contains_key("podman_v6_entries"));
         assert!(!conf.2.contains_key("podman_v6_entries"));
 
-        let ips = conf.0.lookup(&IP_10_89_0_2, "test1");
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "test1");
         assert_eq!(ips, Some(vec![IP_10_89_0_2, IP_FDFD_733B_DC3_220B_2]));
-        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "test1");
+        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "", "test1");
         assert_eq!(ips, Some(vec![IP_10_89_0_2, IP_FDFD_733B_DC3_220B_2]));
     }
     #[test]
@@ -244,9 +244,9 @@ mod tests {
         assert!(conf.1.contains_key("podman_v6_entries"));
         assert!(!conf.2.contains_key("podman_v6_entries"));
 
-        let ips = conf.0.lookup(&IP_10_89_0_2, "test2");
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "test2");
         assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
-        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "test2");
+        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "", "test2");
         assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
     }
     #[test]
@@ -261,7 +261,7 @@ mod tests {
         assert!(conf.1.contains_key("podman_v6_entries"));
         assert!(!conf.2.contains_key("podman_v6_entries"));
 
-        let ips = conf.0.lookup(&IP_10_89_0_2, "88dde8a24897");
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "88dde8a24897");
         assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
     }
     /* -------------------------------------------- */
@@ -440,7 +440,7 @@ mod tests {
                         "fddd::1".parse().unwrap()
                     ]
                 );
-                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti1") {
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "", "testmulti1") {
                     Some(ip_vec) => {
                         assert_eq!(
                             ip_vec,
@@ -455,7 +455,7 @@ mod tests {
                     _ => panic!("unexpected dns result"),
                 }
 
-                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti2") {
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "", "testmulti2") {
                     Some(ip_vec) => {
                         assert_eq!(
                             ip_vec,
