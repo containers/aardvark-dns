@@ -56,6 +56,24 @@ load helpers
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
+@test "basic container - dns itself (bad and good should fall back)" {
+	setup_slirp4netns
+
+	subnet_a=$(random_subnet 5)
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"192.168.0.0", "10.0.2.3"' aliases='"a1", "1a"'
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+
+    # first custom server is wrong but second server should work
+	run_in_container_netns "$a1_pid" "dig" "google.com" "@$gw"
+	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (udp)"
+	run_in_container_netns "$a1_pid" "dig" +tcp "google.com" "@$gw"
+	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (tcp)"
+}
+
 @test "basic container - dns itself custom" {
 	setup_slirp4netns
 

@@ -406,6 +406,9 @@ fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
             None => continue,
         }
     }
+
+    // we do not have time to try many nameservers anyway so only use the first three
+    nameservers.truncate(3);
     Ok(nameservers)
 }
 
@@ -467,6 +470,19 @@ nameserver 1.1.1.1
 nameserver 1.1.1.2 somestuff here
 abc
 nameserver 1.1.1.3",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
+    }
+
+    #[test]
+    fn test_parse_resolv_conf_truncate_to_three() {
+        let res = parse_resolv_conf(
+            "nameserver 1.1.1.1
+nameserver 1.1.1.2
+nameserver 1.1.1.3
+nameserver 1.1.1.4
+nameserver 1.2.3.4",
         )
         .expect("failed to parse");
         assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
