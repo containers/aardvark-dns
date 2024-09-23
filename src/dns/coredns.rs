@@ -1,5 +1,6 @@
 use crate::backend::DNSBackend;
 use crate::backend::DNSResult;
+use arc_swap::ArcSwap;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
 use hickory_client::{client::AsyncClient, proto::xfer::SerialMessage, rr::rdata, rr::Name};
@@ -18,7 +19,6 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::net::{IpAddr, SocketAddr};
-use std::sync::Arc;
 use tokio::net::UdpSocket;
 
 // Containers can be recreated with different ips quickly so
@@ -28,14 +28,14 @@ use tokio::net::UdpSocket;
 const CONTAINER_TTL: u32 = 60;
 
 pub struct CoreDns {
-    name: Name,                          // name or origin
-    network_name: String,                // raw network name
-    address: IpAddr,                     // server address
-    port: u32,                           // server port
-    backend: Arc<DNSBackend>,            // server's data store
-    filter_search_domain: String,        // filter_search_domain
-    rx: async_broadcast::Receiver<bool>, // kill switch receiver
-    resolv_conf: resolv_conf::Config,    // host's parsed /etc/resolv.conf
+    name: Name,                            // name or origin
+    network_name: String,                  // raw network name
+    address: IpAddr,                       // server address
+    port: u32,                             // server port
+    backend: &'static ArcSwap<DNSBackend>, // server's data store
+    filter_search_domain: String,          // filter_search_domain
+    rx: flume::Receiver<()>,               // kill switch receiver
+    resolv_conf: resolv_conf::Config,      // host's parsed /etc/resolv.conf
 }
 
 impl CoreDns {
@@ -45,12 +45,12 @@ impl CoreDns {
     pub async fn new(
         address: IpAddr,
         port: u32,
-        network_name: &str,
+        network_name: String,
         forward_addr: IpAddr,
         forward_port: u16,
-        backend: Arc<DNSBackend>,
+        backend: &'static ArcSwap<DNSBackend>,
         filter_search_domain: String,
-        rx: async_broadcast::Receiver<bool>,
+        rx: flume::Receiver<()>,
     ) -> anyhow::Result<Self> {
         // this does not have to be unique, if we fail getting server name later
         // start with empty name
@@ -63,7 +63,7 @@ impl CoreDns {
             if let Ok(n) = Name::parse(&network_name[..10], None) {
                 name = n;
             }
-        } else if let Ok(n) = Name::parse(network_name, None) {
+        } else if let Ok(n) = Name::parse(&network_name, None) {
             name = n;
         }
 
@@ -81,8 +81,6 @@ impl CoreDns {
                 }
             }
         }
-
-        let network_name = network_name.to_owned();
 
         Ok(CoreDns {
             name,
@@ -114,7 +112,7 @@ impl CoreDns {
 
         loop {
             tokio::select! {
-                _ = self.rx.recv() => {
+                _ = self.rx.recv_async() => {
                     break;
                 },
                 v = receiver.next() => {
@@ -128,6 +126,7 @@ impl CoreDns {
                     };
                     match msg_received {
                         Ok(msg) => {
+                            let backend = self.backend.load();
                             let src_address = msg.addr();
                             let mut dns_resolver = self.resolv_conf.clone();
                             let sender = sender_original.clone().with_remote_addr(src_address);
@@ -141,14 +140,14 @@ impl CoreDns {
                             let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
                             let mut nameservers_scoped: Vec<ScopedIp> = Vec::new();
                             // Add resolvers configured for container
-                            if let Some(Some(dns_servers)) = self.backend.ctr_dns_server.get(&src_address.ip()) {
+                            if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
                                     if !dns_servers.is_empty() {
                                         for dns_server in dns_servers.iter() {
                                             nameservers_scoped.push(ScopedIp::from(*dns_server));
                                         }
                                     }
                             // Add network scoped resolvers only if container specific resolvers were not configured
-                            } else if let Some(network_dns_servers) = self.backend.get_network_scoped_resolvers(&src_address.ip()) {
+                            } else if let Some(network_dns_servers) = backend.get_network_scoped_resolvers(&src_address.ip()) {
                                         for dns_server in network_dns_servers.iter() {
                                                 nameservers_scoped.push(ScopedIp::from(*dns_server));
                                         }
@@ -167,9 +166,9 @@ impl CoreDns {
                             debug!("checking if backend has entry for: {:?}", name);
                             trace!(
                                 "server backend.name_mappings: {:?}",
-                                self.backend.name_mappings
+                                backend.name_mappings
                             );
-                            trace!("server backend.ip_mappings: {:?}", self.backend.ip_mappings);
+                            trace!("server backend.ip_mappings: {:?}", backend.ip_mappings);
 
 
                             // if record type is PTR try resolving early and return if record found
@@ -205,7 +204,7 @@ impl CoreDns {
                                 trace!("Performing lookup reverse lookup for ip: {:?}", ptr_lookup_ip.to_owned());
                                 // We should probably log malformed queries, but for now if-let should be fine.
                                 if let Ok(lookup_ip) = ptr_lookup_ip.parse() {
-                                    if let Some(reverse_lookup) = self.backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
+                                    if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
                                         let mut req_clone = req.clone();
                                         for entry in reverse_lookup {
                                             if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
@@ -225,7 +224,7 @@ impl CoreDns {
                             }
 
                             // attempt intra network resolution
-                            match self.backend.lookup(&src_address.ip(), name.as_str()) {
+                            match backend.lookup(&src_address.ip(), name.as_str()) {
                                 // If we go success from backend lookup
                                 DNSResult::Success(_ip_vec) => {
                                     debug!("Found backend lookup");
@@ -236,7 +235,7 @@ impl CoreDns {
                                     debug!(
                                 "No backend lookup found, try resolving in current resolvers entry"
                             );
-                                    if let Some(container_mappings) = self.backend.name_mappings.get(&self.network_name) {
+                                    if let Some(container_mappings) = backend.name_mappings.get(&self.network_name) {
                                         for (key, value) in container_mappings {
 
                                             // if query contains search domain, strip it out.
