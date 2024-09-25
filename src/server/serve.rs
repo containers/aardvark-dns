@@ -10,7 +10,6 @@ use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
 use nix::unistd::dup2;
-use resolv_conf::ScopedIp;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -126,7 +125,7 @@ async fn stop_and_start_threads<Ip>(
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
-    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
+    nameservers: Arc<Mutex<Vec<IpAddr>>>,
 ) -> AardvarkResult<()>
 where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
@@ -248,7 +247,7 @@ async fn start_dns_server(
     backend: &'static ArcSwap<DNSBackend>,
     rx: flume::Receiver<()>,
     no_proxy: bool,
-    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
+    nameservers: Arc<Mutex<Vec<IpAddr>>>,
 ) -> AardvarkResult<()> {
     let server = CoreDns::new(name, backend, rx, no_proxy, nameservers);
     server
@@ -263,7 +262,7 @@ async fn read_config_and_spawn(
     filter_search_domain: &str,
     handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
-    nameservers: Arc<Mutex<Vec<ScopedIp>>>,
+    nameservers: Arc<Mutex<Vec<IpAddr>>>,
     no_proxy: bool,
 ) -> AardvarkResult<()> {
     let (conf, listen_ip_v4, listen_ip_v6) =
@@ -314,6 +313,7 @@ async fn read_config_and_spawn(
             Vec::new()
         }
     };
+    debug!("Using the following upstream servers: {upstream_resolvers:?}");
 
     {
         // use new scope to only lock for a short time
@@ -373,10 +373,107 @@ fn daemonize() -> Result<(), Error> {
 }
 
 // read /etc/resolv.conf and return all nameservers
-fn get_upstream_resolvers() -> AardvarkResult<Vec<ScopedIp>> {
+fn get_upstream_resolvers() -> AardvarkResult<Vec<IpAddr>> {
     let mut f = File::open("/etc/resolv.conf").wrap("open resolv.conf")?;
-    let mut buf = Vec::with_capacity(4096);
-    f.read_to_end(&mut buf).wrap("read resolv.conf")?;
-    let conf = resolv_conf::Config::parse(buf)?;
-    Ok(conf.nameservers)
+    let mut buf = String::with_capacity(4096);
+    f.read_to_string(&mut buf).wrap("read resolv.conf")?;
+
+    parse_resolv_conf(&buf)
+}
+
+fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
+    let mut nameservers: Vec<IpAddr> = Vec::new();
+    for line in content.split('\n') {
+        // split of comments
+        let line = match line.split_once(|s| s == '#' || s == ';') {
+            Some((f, _)) => f,
+            None => line,
+        };
+        let mut line_parts = line.split_whitespace();
+        match line_parts.next() {
+            Some(first) => {
+                if first == "nameserver" {
+                    if let Some(ip) = line_parts.next() {
+                        // split of zone, we do not support the link local zone currently with ipv6 addresses
+                        let ip = match ip.split_once("%s") {
+                            Some((f, _)) => f,
+                            None => ip,
+                        };
+                        nameservers.push(ip.parse().wrap(ip)?);
+                    }
+                }
+            }
+            None => continue,
+        }
+    }
+    Ok(nameservers)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const IP_1_1_1_1: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+    const IP_1_1_1_2: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 2));
+    const IP_1_1_1_3: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 3));
+
+    #[test]
+    fn test_parse_resolv_conf() {
+        let res = parse_resolv_conf("nameserver 1.1.1.1").expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1]);
+    }
+
+    #[test]
+    fn test_parse_resolv_conf_multiple() {
+        let res = parse_resolv_conf(
+            "nameserver 1.1.1.1
+nameserver 1.1.1.2
+nameserver 1.1.1.3",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
+    }
+
+    #[test]
+    fn test_parse_resolv_conf_search_and_options() {
+        let res = parse_resolv_conf(
+            "nameserver 1.1.1.1
+nameserver 1.1.1.2
+nameserver 1.1.1.3
+search test.podman
+options rotate",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
+    }
+    #[test]
+    fn test_parse_resolv_conf_with_comment() {
+        let res = parse_resolv_conf(
+            "# mytest
+            nameserver 1.1.1.1 # space
+nameserver 1.1.1.2#nospace
+     #leading spaces
+nameserver 1.1.1.3",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
+    }
+
+    #[test]
+    fn test_parse_resolv_conf_with_invalid_content() {
+        let res = parse_resolv_conf(
+            "hey I am not known
+nameserver 1.1.1.1
+nameserver 1.1.1.2 somestuff here
+abc
+nameserver 1.1.1.3",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_1_1_1_1, IP_1_1_1_2, IP_1_1_1_3]);
+    }
+
+    #[test]
+    fn test_parse_resolv_conf_with_invalid_ip() {
+        parse_resolv_conf("nameserver abc").expect_err("invalid ip must error");
+    }
 }

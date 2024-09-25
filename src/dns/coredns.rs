@@ -17,8 +17,6 @@ use hickory_proto::{
     DnsStreamHandle,
 };
 use log::{debug, error, trace, warn};
-use resolv_conf;
-use resolv_conf::ScopedIp;
 use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -40,10 +38,10 @@ pub struct CoreDns {
 
 #[derive(Clone)]
 struct CoreDnsData {
-    network_name: String,                   // raw network name
-    backend: &'static ArcSwap<DNSBackend>,  // server's data store
-    no_proxy: bool,                         // do not forward to external resolvers
-    nameservers: Arc<Mutex<Vec<ScopedIp>>>, // host nameservers from resolv.conf
+    network_name: String,                  // raw network name
+    backend: &'static ArcSwap<DNSBackend>, // server's data store
+    no_proxy: bool,                        // do not forward to external resolvers
+    nameservers: Arc<Mutex<Vec<IpAddr>>>,  // host nameservers from resolv.conf
 }
 
 enum Protocol {
@@ -59,7 +57,7 @@ impl CoreDns {
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
         no_proxy: bool,
-        nameservers: Arc<Mutex<Vec<ScopedIp>>>,
+        nameservers: Arc<Mutex<Vec<IpAddr>>>,
     ) -> Self {
         CoreDns {
             rx,
@@ -219,18 +217,18 @@ impl CoreDns {
                 "Forwarding dns request for {} type: {}",
                 &request_name_string, record_type
             );
-            let mut nameservers: Vec<ScopedIp> = Vec::new();
+            let mut nameservers: Vec<IpAddr> = Vec::new();
             // Add resolvers configured for container
             if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
                 for dns_server in dns_servers.iter() {
-                    nameservers.push(ScopedIp::from(*dns_server));
+                    nameservers.push(*dns_server);
                 }
                 // Add network scoped resolvers only if container specific resolvers were not configured
             } else if let Some(network_dns_servers) =
                 backend.get_network_scoped_resolvers(&src_address.ip())
             {
                 for dns_server in network_dns_servers.iter() {
-                    nameservers.push(ScopedIp::from(*dns_server));
+                    nameservers.push(*dns_server);
                 }
             }
             // Use host resolvers if no custom resolvers are set for the container.
@@ -257,7 +255,7 @@ impl CoreDns {
     }
 
     async fn forward_to_servers(
-        nameservers: Vec<ScopedIp>,
+        nameservers: Vec<IpAddr>,
         mut sender: BufDnsStreamHandle,
         src_address: SocketAddr,
         req: Message,
@@ -265,7 +263,7 @@ impl CoreDns {
     ) {
         // forward dns request to hosts's /etc/resolv.conf
         for nameserver in &nameservers {
-            let addr = SocketAddr::new(nameserver.into(), 53);
+            let addr = SocketAddr::new(*nameserver, 53);
             let (client, handle) = match proto {
                 Protocol::Udp => {
                     let stream = UdpClientStream::<UdpSocket>::new(addr);
