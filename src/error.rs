@@ -8,7 +8,7 @@ pub enum AardvarkError {
     IOError(std::io::Error),
     Chain(String, Box<Self>),
     List(AardvarkErrorList),
-    ResolvConfParseError(resolv_conf::ParseError),
+    AddrParseError(std::net::AddrParseError),
 }
 
 impl AardvarkError {
@@ -59,7 +59,7 @@ impl fmt::Display for AardvarkError {
             Self::Message(s) => write!(f, "{s}"),
             Self::Chain(s, e) => write!(f, "{s}: {e}"),
             Self::IOError(e) => write!(f, "IO error: {e}"),
-            Self::ResolvConfParseError(e) => write!(f, "parse resolv.conf: {e}"),
+            Self::AddrParseError(e) => write!(f, "parse address: {e}"),
             Self::List(list) => {
                 // some extra code to only add \n when it contains multiple errors
                 let mut iter = list.0.iter();
@@ -87,9 +87,9 @@ impl From<nix::Error> for AardvarkError {
     }
 }
 
-impl From<resolv_conf::ParseError> for AardvarkError {
-    fn from(err: resolv_conf::ParseError) -> Self {
-        Self::ResolvConfParseError(err)
+impl From<std::net::AddrParseError> for AardvarkError {
+    fn from(err: std::net::AddrParseError) -> Self {
+        Self::AddrParseError(err)
     }
 }
 
