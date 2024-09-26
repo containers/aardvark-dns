@@ -30,6 +30,8 @@ packages:
     specfile_path: rpm/aardvark-dns.spec
   aardvark-dns-rhel:
     specfile_path: rpm/aardvark-dns.spec
+  aardvark-dns-eln:
+    specfile_path: rpm/aardvark-dns.spec
 
 srpm_build_deps:
   - cargo
@@ -44,8 +46,15 @@ jobs:
       failure_comment:
         message: "Ephemeral COPR build failed. @containers/packit-build please check."
     targets:
-      fedora-all-x86_64: {}
-      fedora-all-aarch64: {}
+      - fedora-all-x86_64
+      - fedora-all-aarch64
+    enable_net: true
+
+  - job: copr_build
+    trigger: pull_request
+    packages: [aardvark-dns-eln]
+    notifications: *copr_build_failure_notification
+    targets:
       fedora-eln-x86_64:
         additional_repos:
           - "https://kojipkgs.fedoraproject.org/repos/eln-build/latest/x86_64/"
@@ -58,7 +67,7 @@ jobs:
     trigger: pull_request
     packages: [aardvark-dns-centos]
     notifications: *copr_build_failure_notification
-    targets:
+    targets: &centos_copr_targets
       - centos-stream-9-x86_64
       - centos-stream-9-aarch64
       - centos-stream-10-x86_64
@@ -94,19 +103,21 @@ jobs:
       failure_comment:
         message: "Tests failed. @containers/packit-build please check."
     targets:
-      - fedora-all-x86_64
-      - fedora-all-aarch64
+      - fedora-development-x86_64
+      - fedora-development-aarch64
+      - fedora-latest-x86_64
+      - fedora-latest-aarch64
+      - fedora-latest-stable-x86_64
+      - fedora-latest-stable-aarch64
+      - fedora-40-x86_64
+      - fedora-40-aarch64
 
   # Unit tests on CentOS Stream
   - job: tests
     trigger: pull_request
     packages: [aardvark-dns-centos]
     notifications: *test_failure_notification
-    targets:
-      - centos-stream-9-x86_64
-      - centos-stream-9-aarch64
-      - centos-stream-10-x86_64
-      - centos-stream-10-aarch64
+    targets: *centos_copr_targets
 
   # Unit tests on RHEL
   - job: tests
@@ -133,7 +144,7 @@ jobs:
     trigger: release
     packages: [aardvark-dns-fedora]
     update_release: false
-    dist_git_branches:
+    dist_git_branches: &fedora_targets
       - fedora-all
 
   # Sync to CentOS Stream
@@ -149,5 +160,4 @@ jobs:
     sidetag_group: netavark-releases
     dependents:
       - netavark
-    dist_git_branches:
-      - fedora-all
+    dist_git_branches: *fedora_targets
