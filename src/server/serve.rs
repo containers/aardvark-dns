@@ -385,7 +385,7 @@ fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
     let mut nameservers: Vec<IpAddr> = Vec::new();
     for line in content.split('\n') {
         // split of comments
-        let line = match line.split_once(|s| s == '#' || s == ';') {
+        let line = match line.split_once(['#', ';']) {
             Some((f, _)) => f,
             None => line,
         };
