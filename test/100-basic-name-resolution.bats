@@ -89,7 +89,9 @@ load helpers
 	run_in_container_netns "$a1_pid" "dig" "+tcp" "google.com" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
-	assert "$output" =~ "\(TCP\)" "server used TCP"
+	# TODO This is not working on rhel/centos 9 as the dig version there doesn't print the line,
+	# so we trust that dig +tcp does the right thing.
+	# assert "$output" =~ "\(TCP\)" "server used TCP"
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
