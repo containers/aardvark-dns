@@ -48,6 +48,17 @@ load helpers
 	# b1 should be able to resolve itself
 	dig "$b1_pid" "bone" "$b_gw"
 	assert $b1_ip
+
+	# we should be able to resolve a from the host if we use the a gw as server
+	run_in_host_netns dig +short "aone" "@$a_gw"
+	assert $a1_ip
+	#  but NOT when using b as server
+	expected_rc=1 run_in_host_netns "host" "-t" "ns" "aone" "$b_gw"
+	assert "$output" =~ "Host aone not found"
+	assert "$output" =~ "NXDOMAIN"
+	# but b on network b is allowed again
+	run_in_host_netns dig +short "bone" "@$b_gw"
+	assert $b1_ip
 }
 
 @test "two subnets with isolated container and one shared" {

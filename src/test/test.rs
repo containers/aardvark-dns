@@ -8,10 +8,24 @@ mod tests {
     use std::collections::HashMap;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-    use aardvark_dns::backend::{DNSBackend, DNSResult};
+    use aardvark_dns::backend::DNSBackend;
     use aardvark_dns::config;
     use aardvark_dns::error::AardvarkResult;
     use std::str::FromStr;
+
+    const IP_10_88_0_2: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 88, 0, 2));
+    const IP_10_88_0_4: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 88, 0, 4));
+    const IP_10_88_0_5: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 88, 0, 5));
+
+    const IP_10_89_0_2: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 89, 0, 2));
+    const IP_10_89_0_3: IpAddr = IpAddr::V4(Ipv4Addr::new(10, 89, 0, 3));
+
+    /// fdfd:733b:dc3:220b::2
+    const IP_FDFD_733B_DC3_220B_2: IpAddr =
+        IpAddr::V6(Ipv6Addr::new(0xfdfd, 0x733b, 0xdc3, 0x220b, 0, 0, 0, 2));
+    /// fdfd:733b:dc3:220b::3
+    const IP_FDFD_733B_DC3_220B_3: IpAddr =
+        IpAddr::V6(Ipv6Addr::new(0xfdfd, 0x733b, 0xdc3, 0x220b, 0, 0, 0, 3));
 
     fn parse_configs(
         dir: &str,
@@ -134,18 +148,11 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries() {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => {
-                match backend.lookup(&"10.88.0.2".parse().unwrap(), "condescendingnash") {
-                    DNSResult::Success(ip_vec) => {
-                        assert_eq!(ip_vec.len(), 1);
-                        assert_eq!("10.88.0.2".parse(), Ok(ip_vec[0]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "condescendingnash");
+        assert_eq!(res, Some(vec![IP_10_88_0_2]));
     }
     #[test]
     // Check lookup query from backend and simulate
@@ -155,18 +162,11 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive(
     ) {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => {
-                match backend.lookup(&"10.88.0.2".parse().unwrap(), "helloworld") {
-                    DNSResult::Success(ip_vec) => {
-                        assert_eq!(ip_vec.len(), 1);
-                        assert_eq!("10.88.0.5".parse(), Ok(ip_vec[0]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "helloworld");
+        assert_eq!(res, Some(vec![IP_10_88_0_5]));
     }
     #[test]
     // Check lookup query from backend and simulate
@@ -176,32 +176,21 @@ mod tests {
     // Same container --> (resolve) Same container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v4_entries_case_insensitive_uppercase(
     ) {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => {
-                match backend.lookup(&"10.88.0.2".parse().unwrap(), "HELLOWORLD") {
-                    DNSResult::Success(ip_vec) => {
-                        assert_eq!(ip_vec.len(), 1);
-                        assert_eq!("10.88.0.5".parse(), Ok(ip_vec[0]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "HELLOWORLD");
+        assert_eq!(res, Some(vec![IP_10_88_0_5]));
     }
     #[test]
     // Check lookup query from backend and simulate
     // nx_domain on bad lookup queries.
     fn test_lookup_queries_from_backend_simulate_nx_domain() {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => {
-                match backend.lookup(&"10.88.0.2".parse().unwrap(), "somebadquery") {
-                    DNSResult::NXDomain => {}
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "somebadquery");
+        assert_eq!(res, None);
     }
     #[test]
     // Check lookup query from backend and simulate
@@ -210,18 +199,11 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) different container name --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4() {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => {
-                match backend.lookup(&"10.88.0.2".parse().unwrap(), "trustingzhukovsky") {
-                    DNSResult::Success(ip_vec) => {
-                        assert_eq!(ip_vec.len(), 1);
-                        assert_eq!("10.88.0.4".parse(), Ok(ip_vec[0]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "trustingzhukovsky");
+        assert_eq!(res, Some(vec![IP_10_88_0_4]));
     }
     #[test]
     // Check lookup query from backend and simulate
@@ -230,117 +212,42 @@ mod tests {
     // Request address must be v4.
     // Same container --> (resolve) different container name by alias --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4_by_alias() {
-        match parse_configs("src/test/config/podman") {
-            Ok((backend, _, _)) => match backend.lookup(&"10.88.0.2".parse().unwrap(), "ctr1") {
-                DNSResult::Success(ip_vec) => {
-                    // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                    assert_eq!(ip_vec.len(), 1);
-                    assert_eq!("10.88.0.4".parse(), Ok(ip_vec[0]));
-                }
-                _ => panic!("unexpected dns result"),
-            },
-            Err(e) => panic!("{}", e),
-        }
+        let res = parse_configs("src/test/config/podman")
+            .expect("parse config error")
+            .0
+            .lookup(&IP_10_88_0_2, "", "ctr1");
+        assert_eq!(res, Some(vec![IP_10_88_0_4]));
     }
     #[test]
     // Check lookup query from backend and simulate
     // dns request from same container to itself but
     // aardvark must return two ip address for v4 and v6.
-    // Request address must be v4.
     // Same container --> (resolve) Same container name --> (on) Same Network
-    fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_on_v6_and_v4_entries(
-    ) {
-        match parse_configs("src/test/config/podman_v6_entries") {
-            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-                listen_ip_v6.contains_key("podman_v6_entries");
-                listen_ip_v4.contains_key("podman_v6_entries");
-                match backend.lookup(&"10.89.0.2".parse().unwrap(), "test1") {
-                    DNSResult::Success(ip_vec) => {
-                        // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                        assert_eq!(ip_vec.len(), 2);
-                        assert_eq!("10.89.0.2".parse(), Ok(ip_vec[0]));
-                        assert_eq!("fdfd:733b:dc3:220b::2".parse(), Ok(ip_vec[1]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
-    }
-    #[test]
-    // Check lookup query from backend and simulate
-    // dns request from same container to itself but
-    // aardvark must return two ip address for v4 and v6.
-    // Request address must be v6.
-    // Same container --> (resolve) Same container name --> (on) Same Network
-    fn test_lookup_queries_from_backend_simulate_same_container_request_from_v6_on_v6_and_v4_entries(
-    ) {
-        match parse_configs("src/test/config/podman_v6_entries") {
-            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-                listen_ip_v6.contains_key("podman_v6_entries");
-                listen_ip_v4.contains_key("podman_v6_entries");
-                match backend.lookup(&"fdfd:733b:dc3:220b::2".parse().unwrap(), "test1") {
-                    DNSResult::Success(ip_vec) => {
-                        // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                        assert_eq!(ip_vec.len(), 2);
-                        assert_eq!("10.89.0.2".parse(), Ok(ip_vec[0]));
-                        assert_eq!("fdfd:733b:dc3:220b::2".parse(), Ok(ip_vec[1]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+    fn test_lookup_queries_from_backend_simulate_same_container_request_from_v4_and_v6_entries() {
+        let conf = parse_configs("src/test/config/podman_v6_entries").expect("parse config error");
+        assert!(conf.1.contains_key("podman_v6_entries"));
+        assert!(!conf.2.contains_key("podman_v6_entries"));
+
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "test1");
+        assert_eq!(ips, Some(vec![IP_10_89_0_2, IP_FDFD_733B_DC3_220B_2]));
+        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "", "test1");
+        assert_eq!(ips, Some(vec![IP_10_89_0_2, IP_FDFD_733B_DC3_220B_2]));
     }
     #[test]
     // Check lookup query from backend and simulate
     // dns request from container to another container but
     // aardvark must return two ip address for v4 and v6.
-    // Request address must be v6.
     // Same container --> (resolve) different container name --> (on) Same Network
-    fn test_lookup_queries_from_backend_simulate_different_container_request_from_v6_on_v6_and_v4_entries(
+    fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4_and_v6_entries(
     ) {
-        match parse_configs("src/test/config/podman_v6_entries") {
-            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-                listen_ip_v6.contains_key("podman_v6_entries");
-                listen_ip_v4.contains_key("podman_v6_entries");
-                match backend.lookup(&"fdfd:733b:dc3:220b::2".parse().unwrap(), "test2") {
-                    DNSResult::Success(ip_vec) => {
-                        // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                        assert_eq!(ip_vec.len(), 2);
-                        assert_eq!("10.89.0.3".parse(), Ok(ip_vec[0]));
-                        assert_eq!("fdfd:733b:dc3:220b::3".parse(), Ok(ip_vec[1]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
-    }
-    #[test]
-    // Check lookup query from backend and simulate
-    // dns request from container to another container but
-    // aardvark must return two ip address for v4 and v6.
-    // Request address must be v6.
-    // Same container --> (resolve) different container name --> (on) Same Network
-    fn test_lookup_queries_from_backend_simulate_different_container_request_from_v4_on_v6_and_v4_entries(
-    ) {
-        match parse_configs("src/test/config/podman_v6_entries") {
-            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-                listen_ip_v6.contains_key("podman_v6_entries");
-                listen_ip_v4.contains_key("podman_v6_entries");
-                match backend.lookup(&"10.89.0.2".parse().unwrap(), "test2") {
-                    DNSResult::Success(ip_vec) => {
-                        // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                        assert_eq!(ip_vec.len(), 2);
-                        assert_eq!("10.89.0.3".parse(), Ok(ip_vec[0]));
-                        assert_eq!("fdfd:733b:dc3:220b::3".parse(), Ok(ip_vec[1]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let conf = parse_configs("src/test/config/podman_v6_entries").expect("parse config error");
+        assert!(conf.1.contains_key("podman_v6_entries"));
+        assert!(!conf.2.contains_key("podman_v6_entries"));
+
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "test2");
+        assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
+        let ips = conf.0.lookup(&IP_FDFD_733B_DC3_220B_2, "", "test2");
+        assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
     }
     #[test]
     // Check lookup query from backend and simulate
@@ -350,22 +257,12 @@ mod tests {
     // Same container --> (resolve) different container by id --> (on) Same Network
     fn test_lookup_queries_from_backend_simulate_different_container_request_by_id_from_v4_on_v6_and_v4_entries(
     ) {
-        match parse_configs("src/test/config/podman_v6_entries") {
-            Ok((backend, listen_ip_v4, listen_ip_v6)) => {
-                listen_ip_v6.contains_key("podman_v6_entries");
-                listen_ip_v4.contains_key("podman_v6_entries");
-                match backend.lookup(&"10.89.0.2".parse().unwrap(), "88dde8a24897") {
-                    DNSResult::Success(ip_vec) => {
-                        // verfiy length for issues like: https://github.com/containers/aardvark-dns/issues/120
-                        assert_eq!(ip_vec.len(), 2);
-                        assert_eq!("10.89.0.3".parse(), Ok(ip_vec[0]));
-                        assert_eq!("fdfd:733b:dc3:220b::3".parse(), Ok(ip_vec[1]));
-                    }
-                    _ => panic!("unexpected dns result"),
-                }
-            }
-            Err(e) => panic!("{}", e),
-        }
+        let conf = parse_configs("src/test/config/podman_v6_entries").expect("parse config error");
+        assert!(conf.1.contains_key("podman_v6_entries"));
+        assert!(!conf.2.contains_key("podman_v6_entries"));
+
+        let ips = conf.0.lookup(&IP_10_89_0_2, "", "88dde8a24897");
+        assert_eq!(ips, Some(vec![IP_10_89_0_3, IP_FDFD_733B_DC3_220B_3]));
     }
     /* -------------------------------------------- */
     // ---Test aardvark-dns reverse lookup logic --
@@ -543,8 +440,8 @@ mod tests {
                         "fddd::1".parse().unwrap()
                     ]
                 );
-                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti1") {
-                    DNSResult::Success(ip_vec) => {
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "", "testmulti1") {
+                    Some(ip_vec) => {
                         assert_eq!(
                             ip_vec,
                             vec![
@@ -558,8 +455,8 @@ mod tests {
                     _ => panic!("unexpected dns result"),
                 }
 
-                match backend.lookup(&"10.0.0.2".parse().unwrap(), "testmulti2") {
-                    DNSResult::Success(ip_vec) => {
+                match backend.lookup(&"10.0.0.2".parse().unwrap(), "", "testmulti2") {
+                    Some(ip_vec) => {
                         assert_eq!(
                             ip_vec,
                             vec![

@@ -1,5 +1,4 @@
 use crate::backend::DNSBackend;
-use crate::backend::DNSResult;
 use crate::error::AardvarkResult;
 use arc_swap::ArcSwap;
 use arc_swap::Guard;
@@ -455,27 +454,13 @@ fn reply_ip<'a>(
     src_address: SocketAddr,
     req: &'a mut Message,
 ) -> Option<&'a Message> {
-    let mut resolved_ip_list: Vec<IpAddr> = Vec::new();
     // attempt intra network resolution
-    match backend.lookup(&src_address.ip(), name) {
+    let resolved_ip_list = match backend.lookup(&src_address.ip(), network_name, name) {
         // If we go success from backend lookup
-        DNSResult::Success(_ip_vec) => {
-            debug!("Found backend lookup");
-            resolved_ip_list = _ip_vec;
-        }
-        // For everything else assume the src_address was not in ip_mappings
-        _ => {
-            debug!("No backend lookup found, try resolving in current resolvers entry");
-            if let Some(container_mappings) = backend.name_mappings.get(network_name) {
-                if let Some(ips) = container_mappings.get(name) {
-                    resolved_ip_list.clone_from(ips);
-                }
-            }
-        }
-    }
-    if resolved_ip_list.is_empty() {
-        return None;
-    }
+        Some(ips) => ips,
+        None => return None,
+    };
+
     if record_type == RecordType::A {
         for record_addr in resolved_ip_list {
             if let IpAddr::V4(ipv4) = record_addr {

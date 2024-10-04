@@ -29,19 +29,6 @@ pub struct DNSBackend {
     pub search_domain: String,
 }
 
-pub enum DNSResult {
-    // We know the IP address of the requester and what networks they are in.
-    // Here's a vector of IPs corresponding to your query.
-    Success(Vec<IpAddr>),
-    // We know the IP address of the requester and what networks they are in.
-    // However, there were no results for the requested name to look up.
-    NXDomain,
-    // We do not know the IP address of the requester.
-    NoSuchIP,
-    // Other, unspecified error occurred.
-    Error(String),
-}
-
 impl DNSBackend {
     // Create a new backend from the given set of network mappings.
     pub fn new(
@@ -71,12 +58,13 @@ impl DNSBackend {
     }
 
     // Handle a single DNS lookup made by a given IP.
-    // The name being looked up *must* have the TLD used by the DNS server
-    // stripped.
-    // TODO: right now this returns v4 and v6 addresses intermixed and relies on
-    // the caller to sort through them; we could add a v6 bool as an argument
-    // and do it here instead.
-    pub fn lookup(&self, requester: &IpAddr, entry: &str) -> DNSResult {
+    // Returns all the ips for the given entry name
+    pub fn lookup(
+        &self,
+        requester: &IpAddr,
+        network_name: &str,
+        entry: &str,
+    ) -> Option<Vec<IpAddr>> {
         // Normalize lookup entry to lowercase.
         let mut name = entry.to_lowercase();
 
@@ -87,9 +75,21 @@ impl DNSBackend {
             name.truncate(name.len() - self.search_domain.len())
         }
 
+        // if this is a fully qualified name, remove dots so backend can perform search
+        if name.ends_with(".") {
+            name.truncate(name.len() - 1)
+        }
+
+        let owned_netns: Vec<String>;
+
         let nets = match self.ip_mappings.get(requester) {
             Some(n) => n,
-            None => return DNSResult::NoSuchIP,
+            // no source ip found let's just allow access to the current network where the request was made
+            // On newer rust versions in CI we can return &vec![network_name.to_string()] directly without the extra assignment to the outer scope
+            None => {
+                owned_netns = vec![network_name.to_string()];
+                &owned_netns
+            }
         };
 
         let mut results: Vec<IpAddr> = Vec::new();
@@ -102,24 +102,17 @@ impl DNSBackend {
                     continue;
                 }
             };
-            // if this is a fully qualified name, remove dots so backend can perform search
-            if !name.is_empty() {
-                if let Some(lastchar) = name.chars().last() {
-                    if lastchar == '.' {
-                        name = (name[0..name.len() - 1]).to_string();
-                    }
-                }
-            }
+
             if let Some(addrs) = net_names.get(&name) {
                 results.append(&mut addrs.clone());
             }
         }
 
         if results.is_empty() {
-            return DNSResult::NXDomain;
+            return None;
         }
 
-        DNSResult::Success(results)
+        Some(results)
     }
 
     // Returns list of network resolvers for a particular container
