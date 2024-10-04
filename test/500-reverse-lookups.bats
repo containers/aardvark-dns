@@ -29,15 +29,15 @@ load helpers
 	dig_reverse "$a1_pid" "$a2_ip" "$gw"
 	echo -e "Output:\n${output}\n"
 	a2_expected_name=$(echo $a2_ip | awk -F. '{printf "%d.%d.%d.%d.in-addr.arpa.", $4, $3, $2, $1}')
-	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]atwo\."
-	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]a2\."
-	assert "$output" =~ "$a2_expected_name[ 	].*[ 	]2a\."
+	assert "$output" =~ "$a2_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*atwo\."
+	assert "$output" =~ "$a2_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*a2\."
+	assert "$output" =~ "$a2_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*2a\."
 	dig_reverse "$a2_pid" "$a1_ip" "$gw"
 	echo -e "Output:\n${output}\n"
 	a1_expected_name=$(echo $a1_ip | awk -F. '{printf "%d.%d.%d.%d.in-addr.arpa.", $4, $3, $2, $1}')
-	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]aone\."
-	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]a1\."
-	assert "$output" =~ "$a1_expected_name[ 	].*[ 	]1a\."
+	assert "$output" =~ "$a1_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*aone\."
+	assert "$output" =~ "$a1_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*a1\."
+	assert "$output" =~ "$a1_expected_name[[:space:]]*0[[:space:]]*IN[[:space:]]*PTR[[:space:]]*1a\."
 }
 
 @test "check reverse lookups on ipaddress v6" {
