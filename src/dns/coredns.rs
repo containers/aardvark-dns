@@ -24,6 +24,8 @@ use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::net::UdpSocket;
 
+const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub struct CoreDns {
     rx: flume::Receiver<()>, // kill switch receiver
     inner: CoreDnsData,
@@ -254,12 +256,17 @@ impl CoreDns {
         req: Message,
         proto: Protocol,
     ) {
+        let mut timeout = DEFAULT_TIMEOUT;
+        // Remember do not divide by 0.
+        if !nameservers.is_empty() {
+            timeout = Duration::from_secs(5) / nameservers.len() as u32
+        }
         // forward dns request to hosts's /etc/resolv.conf
         for nameserver in &nameservers {
             let addr = SocketAddr::new(*nameserver, 53);
             let (client, handle) = match proto {
                 Protocol::Udp => {
-                    let stream = UdpClientStream::<UdpSocket>::new(addr);
+                    let stream = UdpClientStream::<UdpSocket>::with_timeout(addr, timeout);
                     let (cl, bg) = match AsyncClient::connect(stream).await {
                         Ok(a) => a,
                         Err(e) => {
@@ -271,15 +278,17 @@ impl CoreDns {
                     (cl, handle)
                 }
                 Protocol::Tcp => {
-                    let (stream, sender) =
-                        TcpClientStream::<AsyncIoTokioAsStd<tokio::net::TcpStream>>::new(addr);
-                    let (cl, bg) = match AsyncClient::new(stream, sender, None).await {
-                        Ok(a) => a,
-                        Err(e) => {
-                            debug!("Failed to connect to {addr}: {e}");
-                            continue;
-                        }
-                    };
+                    let (stream, sender) = TcpClientStream::<
+                        AsyncIoTokioAsStd<tokio::net::TcpStream>,
+                    >::with_timeout(addr, timeout);
+                    let (cl, bg) =
+                        match AsyncClient::with_timeout(stream, sender, timeout, None).await {
+                            Ok(a) => a,
+                            Err(e) => {
+                                debug!("Failed to connect to {addr}: {e}");
+                                continue;
+                            }
+                        };
                     let handle = tokio::spawn(bg);
                     (cl, handle)
                 }
