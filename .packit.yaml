@@ -157,6 +157,7 @@ jobs:
 
   - job: koji_build
     trigger: commit
+    packages: [aardvark-dns-fedora]
     sidetag_group: netavark-releases
     dependents:
       - netavark
