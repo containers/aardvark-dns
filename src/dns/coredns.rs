@@ -202,7 +202,6 @@ impl CoreDns {
         if data.no_proxy
             || backend.ctr_is_internal(&src_address.ip())
             || request_name_string.ends_with(&backend.search_domain)
-            || request_name_string.matches('.').count() == 1
         {
             let mut nx_message = req.clone();
             nx_message.set_response_code(ResponseCode::NXDomain);
