@@ -26,6 +26,15 @@ SUBCOMMANDS:
     run     Runs the aardvark dns server with the specified configuration directory
 ```
 
+### MSRV (Minimum Supported Rust Version)
+
+v1.76
+
+We test that Netavark can be build on this Rust version and on some newer versions.
+All newer versions should also build, and if they do not, the issue should be
+reported and will be fixed. Older versions are not guaranteed to build and issues
+will not be fixed.
+
 ### Build
 
 ```console
