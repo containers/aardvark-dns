@@ -5,6 +5,17 @@
 
 load helpers
 
+
+DNSMASQ_PID=
+function teardown() {
+	if [[ -n "$DNSMASQ_PID" ]]; then
+		kill -9 $DNSMASQ_PID
+		# for debugging
+		cat $AARDVARK_TMPDIR/dnsmasq.log
+	fi
+	basic_teardown
+}
+
 # custom DNS server is set to `127.0.0.255` which is invalid DNS server
 # hence all the external request must fail, this test is expected to fail
 # with exit code 124
@@ -116,18 +127,29 @@ load helpers
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
-@test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
+@test "basic container - ndots incomplete entry" {
 	setup_slirp4netns
 
+	# launch dnsmasq to run a local server with a single name without domain part
+	# we cannot use run_is_host_netns to run in the background
+	nsenter -m -n -t "$HOST_NS_PID" dnsmasq --no-daemon --conf-file=/dev/null --interface=lo --bind-interfaces \
+		--address=/testname/192.168.0.1 --no-resolv --no-hosts &>"$AARDVARK_TMPDIR/dnsmasq.log" 3>/dev/null &
+	DNSMASQ_PID=$!
+
 	subnet_a=$(random_subnet 5)
-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
+	# ensure we are using dnsmasq via custom_dns_server
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" \
+		subnet="$subnet_a" aliases='"a1", "1a"' custom_dns_server='"127.0.0.1"'
 	config_a1=$config
 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
 	create_container "$config_a1"
 	a1_pid=$CONTAINER_NS_PID
 	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$gw"
-	assert "$output" =~ "NXDOMAIN"
+	assert "$output" =~ "REFUSED" "dnsmasq returns REFUSED"
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "testname" "@$gw"
+	assert "192.168.0.1" "should resolve local name from external nameserver (dnsmasq)"
 }
 
 @test "basic container - dns itself on container with ipaddress v6" {
