@@ -33,7 +33,7 @@ tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "net", "s
 nix = { version = "0.29.0", features = ["fs", "signal"] }
 libc = "0.2.161"
 arc-swap = "1.7.1"
-flume = "0.11.0"
+flume = "0.11.1"
 
 [build-dependencies]
 chrono = "0.4.38"
