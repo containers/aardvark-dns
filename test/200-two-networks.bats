@@ -6,7 +6,7 @@
 load helpers
 
 @test "two containers on different networks" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	# container a1 on subnet a
 	subnet_a=$(random_subnet 5)
@@ -28,19 +28,13 @@ load helpers
 
 	# container a1 should not resolve b1 and we should get
 	# a NXDOMAIN
-	dig "$a1_pid" "bone" "$a_gw"
-	assert ""
-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$a_gw"
-	assert "$output" =~ "Host bone not found"
-	assert "$output" =~ "NXDOMAIN"
+	run_in_container_netns "$a1_pid" "dig" "bone" "@$a_gw"
+	assert "$output" =~ "status: NXDOMAIN" "a1 resolves b2"
 
 	# container b1 should not resolve a1 and we should get
 	# a NXDOMAIN
-	dig "$b1_pid" "aone" "$b_gw"
-	assert ""
-	expected_rc=1 run_in_container_netns "$b1_pid" "host" "-t" "ns" "aone" "$b_gw"
-	assert "$output" =~ "Host aone not found"
-	assert "$output" =~ "NXDOMAIN"
+	run_in_container_netns "$b1_pid" "dig" "aone" "@$b_gw"
+	assert "$output" =~ "status: NXDOMAIN" "b1 resolves a1"
 
 	# a1 should be able to resolve itself
 	dig "$a1_pid" "aone" "$a_gw"
@@ -53,15 +47,17 @@ load helpers
 	run_in_host_netns dig +short "aone" "@$a_gw"
 	assert $a1_ip
 	#  but NOT when using b as server
-	expected_rc=1 run_in_host_netns "host" "-t" "ns" "aone" "$b_gw"
-	assert "$output" =~ "Host aone not found"
-	assert "$output" =~ "NXDOMAIN"
+	run_in_host_netns "dig" "aone" "@$b_gw"
+	assert "$output" =~ "status: NXDOMAIN" "b1 listener can resolve a1"
+
 	# but b on network b is allowed again
 	run_in_host_netns dig +short "bone" "@$b_gw"
 	assert $b1_ip
 }
 
 @test "two subnets with isolated container and one shared" {
+	setup_dnsmasq
+
 	# container a1 on subnet a
 	subnet_a=$(random_subnet 5)
 	subnet_b=$(random_subnet 5)

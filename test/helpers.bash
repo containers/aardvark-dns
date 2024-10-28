@@ -10,6 +10,11 @@ AARDVARK=${AARDVARK:-$TESTSDIR/../bin/aardvark-dns}
 # export RUST_BACKTRACE so that we get a helpful stack trace
 export RUST_BACKTRACE=full
 
+# FIXME current 6.11.4 f40 kernel is broken and cannot use iptables with ipv6
+export NETAVARK_FW=nftables
+
+TEST_DOMAIN=example.podman.io
+
 HOST_NS_PID=
 CONTAINER_NS_PID=
 
@@ -534,28 +539,16 @@ function basic_host_setup() {
     IP_COUNT=0
 }
 
-function setup_slirp4netns() {
-    command -v slirp4netns || die "slirp4netns not installed"
+function setup_dnsmasq() {
+    command -v dnsmasq || die "dnsmasq not installed"
 
-    slirp4netns -c $HOST_NS_PID tap0 &>"$AARDVARK_TMPDIR/slirp4.log" &
-    SLIRP4NETNS_PID=$!
+    run_in_host_netns ip link set lo up
+    run_in_host_netns dnsmasq --conf-file=$TESTSDIR/dnsmasq.conf --pid-file="$AARDVARK_TMPDIR/dnsmasq.pid"
+    DNSMASQ_PID=$(cat $AARDVARK_TMPDIR/dnsmasq.pid)
 
-    # create new resolv.conf with slirp4netns dns
-    echo "nameserver 10.0.2.3" >"$AARDVARK_TMPDIR/resolv.conf"
+    # create new resolv.conf with dnsmasq dns
+    echo "nameserver 127.0.0.1" >"$AARDVARK_TMPDIR/resolv.conf"
     run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
-
-    local timeout=6
-    while [[ $timeout -gt 1 ]]; do
-        run_in_host_netns ip addr
-        if [[ "$output" =~ "tap0" ]]; then
-            return
-        fi
-        sleep 1
-        let timeout=$timeout-1
-    done
-
-    cat "$AARDVARK_TMPDIR/slirp4.log"
-    die "Timed out waiting for slirp4netns to start"
 }
 
 function basic_teardown() {
@@ -565,9 +558,9 @@ function basic_teardown() {
         kill -9 "${CONTAINER_NS_PIDS[$i]}"
     done
 
-    if [[ -n "$SLIRP4NETNS_PID" ]]; then
-        kill -9 $SLIRP4NETNS_PID
-        SLIRP4NETNS_PID=""
+    if [[ -n "$DNSMASQ_PID" ]]; then
+        kill -9 $DNSMASQ_PID
+        DNSMASQ_PID=""
     fi
 
     # Finally kill the host netns
