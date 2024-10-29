@@ -46,7 +46,7 @@ if [[ -n $RHEL_VERSION ]]; then
 fi
 
 # Install dependencies for running tests
-dnf -y install bats bind-utils cargo clippy go-md2man iptables jq make netavark nftables nmap-ncat rustfmt slirp4netns
+dnf -y install bats bind-utils cargo clippy go-md2man iptables jq make netavark nftables nmap-ncat rustfmt dnsmasq
 
 rpm -q aardvark-dns cargo netavark nftables
 
