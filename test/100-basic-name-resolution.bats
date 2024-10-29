@@ -5,11 +5,20 @@
 
 load helpers
 
+
+HELPER_PID=
+function teardown() {
+	if [[ -n "$HELPER_PID" ]]; then
+		kill -9 $HELPER_PID
+	fi
+	basic_teardown
+}
+
 # custom DNS server is set to `127.0.0.255` which is invalid DNS server
 # hence all the external request must fail, this test is expected to fail
 # with exit code 124
 @test "basic container - dns itself (custom bad dns server)" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet 5)
 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.0.0.255"' aliases='"a1", "1a"'
@@ -24,17 +33,23 @@ load helpers
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
-        # custom dns server is set to 3.3.3.3 which is not a valid DNS server so external DNS request must fail
-	expected_rc=124 run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
+    # custom dns server is set to 127.0.0.255 which is not a valid DNS server so external DNS request must fail
+	expected_rc=124 run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw"
 }
 
 # custom DNS server is set to `8.8.8.8, 1.1.1.1` which is valid DNS server
 # hence all the external request must paas.
 @test "basic container - dns itself (custom good dns server)" {
-	setup_slirp4netns
+	setup_dnsmasq
+
+	# launch dnsmasq to run a second local server with a unique name so we know custom_dns_server works
+	run_in_host_netns dnsmasq --conf-file=/dev/null --pid-file="$AARDVARK_TMPDIR/dnsmasq2.pid" \
+		--except-interface=lo --listen-address=127.1.1.53 --bind-interfaces  \
+		--address=/unique-name.local/192.168.0.1 --no-resolv --no-hosts
+	HELPER_PID=$(cat $AARDVARK_TMPDIR/dnsmasq2.pid)
 
 	subnet_a=$(random_subnet 5)
-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"8.8.8.8","1.1.1.1"' aliases='"a1", "1a"'
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.1.1.53"' aliases='"a1", "1a"'
 
 	config_a1=$config
 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
@@ -48,19 +63,23 @@ load helpers
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
-	# validate that we get an ipv4
-	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
+	run_in_container_netns "$a1_pid" "dig" "+short" "unique-name.local" "@$gw"
+	# validate that we get the right ip
+	assert "$output" == "192.168.0.1"
 	# Set recursion bit is already set if requested so output must not
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
 @test "basic container - dns itself (bad and good should fall back)" {
-	setup_slirp4netns
+	setup_dnsmasq
+
+	# using sh-exec to keep the udp query hanging for at least 3 seconds
+	nsenter -m -n -t $HOST_NS_PID nc -l -u 127.5.5.5 53 --sh-exec "sleep 3" 3>/dev/null &
+	HELPER_PID=$!
 
 	subnet_a=$(random_subnet 5)
-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"192.168.0.0", "10.0.2.3"' aliases='"a1", "1a"'
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"127.5.5.5", "127.0.0.1"' aliases='"a1", "1a"'
 	config_a1=$config
 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
@@ -68,14 +87,18 @@ load helpers
 	a1_pid=$CONTAINER_NS_PID
 
     # first custom server is wrong but second server should work
-	run_in_container_netns "$a1_pid" "dig" "google.com" "@$gw"
+	run_in_container_netns "$a1_pid" "dig" "$TEST_DOMAIN" "@$gw"
 	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (udp)"
-	run_in_container_netns "$a1_pid" "dig" +tcp "google.com" "@$gw"
+
+	# Now the same with tcp.
+	nsenter -m -n -t $HOST_NS_PID nc -l 127.5.5.5 53 --sh-exec "sleep 3" 3>/dev/null &
+	HELPER_PID=$!
+	run_in_container_netns "$a1_pid" "dig" +tcp "$TEST_DOMAIN" "@$gw"
 	assert "$output" =~ "Query time: [23][0-9]{3} msec" "timeout should be 2.5s so request should then work shortly after (tcp)"
 }
 
 @test "basic container - dns itself custom" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet 5)
 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
@@ -95,7 +118,7 @@ load helpers
 	assert "$ip_a1"
 
 
-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw"
+	run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
 	# Set recursion bit is already set if requested so output must not
@@ -105,7 +128,7 @@ load helpers
 	# check TCP support for forwarding
 	# note there is no guarantee that the forwarding is happening via TCP though
 	# TODO add custom dns record that is to big for udp so we can be sure...
-	run_in_container_netns "$a1_pid" "dig" "+tcp" "google.com" "@$gw"
+	run_in_container_netns "$a1_pid" "dig" "+tcp" "$TEST_DOMAIN" "@$gw"
 	# validate that we get an ipv4
 	assert "$output" =~ "[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+"
 	# TODO This is not working on rhel/centos 9 as the dig version there doesn't print the line,
@@ -116,22 +139,26 @@ load helpers
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
-@test "basic container - ndots incomplete bad entry must NXDOMAIN instead of forwarding and timing out" {
-	setup_slirp4netns
+@test "basic container - ndots incomplete entry" {
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet 5)
-	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" \
+		subnet="$subnet_a" aliases='"a1", "1a"'
 	config_a1=$config
 	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
 	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
 	create_container "$config_a1"
 	a1_pid=$CONTAINER_NS_PID
-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "bone" "$gw"
-	assert "$output" =~ "NXDOMAIN"
+	run_in_container_netns "$a1_pid" "dig" "someshortname" "@$gw"
+	assert "$output" =~ "status: REFUSED" "dnsmasq returns REFUSED"
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "testname" "@$gw"
+	assert "198.51.100.1" "should resolve local name from external nameserver (dnsmasq)"
 }
 
 @test "basic container - dns itself on container with ipaddress v6" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet 6)
 	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1", "1a"'
@@ -146,7 +173,7 @@ load helpers
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
-	run_in_container_netns "$a1_pid" "dig" "+short" "google.com" "@$gw" "AAAA"
+	run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw" "AAAA"
 	# validate that we got valid ipv6
 	# check that the output is not empty
 	assert "$lines[0]" != "" "got at least one result"
@@ -206,7 +233,7 @@ load helpers
 # Internal network, meaning no DNS servers.
 # Hence all external requests must fail.
 @test "basic container - internal network has no DNS" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet)
 	create_config network_name="podman1" internal=true container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" custom_dns_server='"1.1.1.1","8.8.8.8"' aliases='"a1", "1a"'
@@ -223,14 +250,14 @@ load helpers
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
 	# Internal network means no DNS server means this should hard-fail
-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "google.com" "$gw"
-	assert "$output" =~ "Host google.com not found"
+	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "$TEST_DOMAIN" "$gw"
+	assert "$output" =~ "Host $TEST_DOMAIN not found"
 	assert "$output" =~ "NXDOMAIN"
 }
 
 # Internal network, but this time with IPv6. Same result as above expected.
 @test "basic container - internal network has no DNS - ipv6" {
-	setup_slirp4netns
+	setup_dnsmasq
 
 	subnet_a=$(random_subnet 6)
 	# Cloudflare and Google public anycast DNS v6 nameservers
@@ -248,7 +275,7 @@ load helpers
 	assert "$output" !~ "WARNING: recursion requested but not available"
 
 	# Internal network means no DNS server means this should hard-fail
-	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "google.com" "$gw"
-	assert "$output" =~ "Host google.com not found"
+	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "ns" "$TEST_DOMAIN" "$gw"
+	assert "$output" =~ "Host $TEST_DOMAIN not found"
 	assert "$output" =~ "NXDOMAIN"
 }

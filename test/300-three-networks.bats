@@ -6,6 +6,8 @@
 load helpers
 
 @test "three networks with a connect" {
+	setup_dnsmasq
+
 	subnet_a=$(random_subnet 5)
 	subnet_b=$(random_subnet 5)
 
