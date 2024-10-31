@@ -19,12 +19,6 @@ adjust:
     test: make -C ../.. unit
 
 /integration:
+    tag: [ upstream, downstream]
     summary: Integration tests
-
-    /upstream:
-        tag: upstream
-        test: bash test_integration.sh upstream
-
-    /downstream:
-        tag: downstream
-        test: bash test_integration.sh downstream
+    test: bash test_integration.sh
