@@ -1,8 +1,19 @@
 # Only common dependencies that are NOT required to run netavark-tests.sh are
 # specified here. Everything else is in netavark-tests.sh.
 require:
+    - bats
+    - bind-utils
     - cargo
+    - clippy
+    - go-md2man
+    - iptables
+    - jq
     - make
+    - netavark
+    - nftables
+    - nmap-ncat
+    - rustfmt
+    - dnsmasq
 
 adjust:
     duration: 10m
@@ -19,12 +30,6 @@ adjust:
     test: make -C ../.. unit
 
 /integration:
+    tag: [ upstream, downstream]
     summary: Integration tests
-
-    /upstream:
-        tag: upstream
-        test: bash test_integration.sh upstream
-
-    /downstream:
-        tag: downstream
-        test: bash test_integration.sh downstream
+    test: bash test_integration.sh
