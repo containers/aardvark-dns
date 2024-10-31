@@ -28,8 +28,6 @@ packages:
   aardvark-dns-centos:
     pkg_tool: centpkg
     specfile_path: rpm/aardvark-dns.spec
-  aardvark-dns-rhel:
-    specfile_path: rpm/aardvark-dns.spec
   aardvark-dns-eln:
     specfile_path: rpm/aardvark-dns.spec
 
@@ -74,15 +72,6 @@ jobs:
       - centos-stream-10-aarch64
     enable_net: true
 
-  - job: copr_build
-    trigger: pull_request
-    packages: [aardvark-dns-rhel]
-    notifications: *copr_build_failure_notification
-    targets:
-      - epel-9-x86_64
-      - epel-9-aarch64
-    enable_net: true
-
   # Run on commit to main branch
   - job: copr_build
     trigger: commit
@@ -118,26 +107,6 @@ jobs:
     packages: [aardvark-dns-centos]
     notifications: *test_failure_notification
     targets: *centos_copr_targets
-
-  # Unit tests on RHEL
-  - job: tests
-    trigger: pull_request
-    packages: [aardvark-dns-rhel]
-    notifications: *test_failure_notification
-    use_internal_tf: true
-    targets:
-      epel-9-aarch64:
-        distros: [RHEL-9-Nightly,RHEL-9.4.0-Nightly]
-      epel-9-x86_64:
-        distros: [RHEL-9-Nightly,RHEL-9.4.0-Nightly]
-      # NOTE: Need to use centos-stream-10 until RHEL-10/EPEL-10 copr targets
-      # are available
-      # TODO: iptables kernel module is not available on rhel10.
-      # Enable these after netavark default is switched to nftables.
-      #centos-stream-10-aarch64:
-      #  distros: [RHEL-10-Beta-Nightly]
-      #centos-stream-10-x86_64:
-      #  distros: [RHEL-10-Beta-Nightly]
 
   # Sync to Fedora
   - job: propose_downstream
