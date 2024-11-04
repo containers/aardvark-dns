@@ -15,6 +15,7 @@ execute:
     summary: Run tests on bodhi / errata and dist-git PRs
     discover+:
         filter: tag:downstream
+        dist-git-install-builddeps: true
         dist-git-source: true
         dist-git-remove-fmf-root: true
     adjust+:
