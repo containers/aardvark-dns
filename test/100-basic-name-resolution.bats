@@ -288,7 +288,7 @@ function teardown() {
 	run_in_host_netns ip link add test type bridge
 	run_in_host_netns ip link set test up
 	run_in_host_netns ip -j addr
-	link_local_addr=$(jq -r '.[] | select(.ifname=="test").addr_info.[0].local' <<<"$output")
+	link_local_addr=$(jq -r '.[] | select(.ifname=="test").addr_info[0].local' <<<"$output")
 
 	# update our fake netns resolv.conf with the link local address as only nameserver
 	echo "nameserver $link_local_addr%test" >"$AARDVARK_TMPDIR/resolv.conf"
