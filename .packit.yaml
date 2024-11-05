@@ -47,6 +47,7 @@ jobs:
       - fedora-all-x86_64
       - fedora-all-aarch64
     enable_net: true
+    osh_diff_scan_after_copr_build: false
 
   - job: copr_build
     trigger: pull_request
@@ -135,6 +136,7 @@ jobs:
     update_release: false
     dist_git_branches:
       - c10s
+      - c9s
 
   - job: koji_build
     trigger: commit
