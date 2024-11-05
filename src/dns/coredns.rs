@@ -26,6 +26,8 @@ use tokio::net::UdpSocket;
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
+pub const DNS_PORT: u16 = 53;
+
 pub struct CoreDns {
     rx: flume::Receiver<()>, // kill switch receiver
     inner: CoreDnsData,
@@ -33,10 +35,10 @@ pub struct CoreDns {
 
 #[derive(Clone)]
 struct CoreDnsData {
-    network_name: String,                  // raw network name
-    backend: &'static ArcSwap<DNSBackend>, // server's data store
-    no_proxy: bool,                        // do not forward to external resolvers
-    nameservers: Arc<Mutex<Vec<IpAddr>>>,  // host nameservers from resolv.conf
+    network_name: String,                     // raw network name
+    backend: &'static ArcSwap<DNSBackend>,    // server's data store
+    no_proxy: bool,                           // do not forward to external resolvers
+    nameservers: Arc<Mutex<Vec<SocketAddr>>>, // host nameservers from resolv.conf
 }
 
 enum Protocol {
@@ -52,7 +54,7 @@ impl CoreDns {
         backend: &'static ArcSwap<DNSBackend>,
         rx: flume::Receiver<()>,
         no_proxy: bool,
-        nameservers: Arc<Mutex<Vec<IpAddr>>>,
+        nameservers: Arc<Mutex<Vec<SocketAddr>>>,
     ) -> Self {
         CoreDns {
             rx,
@@ -211,18 +213,18 @@ impl CoreDns {
                 "Forwarding dns request for {} type: {}",
                 &request_name_string, record_type
             );
-            let mut nameservers: Vec<IpAddr> = Vec::new();
+            let mut nameservers = Vec::new();
             // Add resolvers configured for container
             if let Some(Some(dns_servers)) = backend.ctr_dns_server.get(&src_address.ip()) {
                 for dns_server in dns_servers.iter() {
-                    nameservers.push(*dns_server);
+                    nameservers.push(SocketAddr::new(*dns_server, DNS_PORT));
                 }
                 // Add network scoped resolvers only if container specific resolvers were not configured
             } else if let Some(network_dns_servers) =
                 backend.get_network_scoped_resolvers(&src_address.ip())
             {
                 for dns_server in network_dns_servers.iter() {
-                    nameservers.push(*dns_server);
+                    nameservers.push(SocketAddr::new(*dns_server, DNS_PORT));
                 }
             }
             // Use host resolvers if no custom resolvers are set for the container.
@@ -249,7 +251,7 @@ impl CoreDns {
     }
 
     async fn forward_to_servers(
-        nameservers: Vec<IpAddr>,
+        nameservers: Vec<SocketAddr>,
         mut sender: BufDnsStreamHandle,
         src_address: SocketAddr,
         req: Message,
@@ -261,8 +263,7 @@ impl CoreDns {
             timeout = Duration::from_secs(5) / nameservers.len() as u32
         }
         // forward dns request to hosts's /etc/resolv.conf
-        for nameserver in &nameservers {
-            let addr = SocketAddr::new(*nameserver, 53);
+        for addr in nameservers {
             let (client, handle) = match proto {
                 Protocol::Udp => {
                     let stream = UdpClientStream::<UdpSocket>::with_timeout(addr, timeout);

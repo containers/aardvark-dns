@@ -279,3 +279,46 @@ function teardown() {
 	assert "$output" =~ "Host $TEST_DOMAIN not found"
 	assert "$output" =~ "NXDOMAIN"
 }
+
+@test "host dns on ipv6 link local" {
+	# create a local interface with a link local ipv6 address
+	# disable dad as it takes some time so the initial connection fails without it
+	run_in_host_netns sysctl -w net.ipv6.conf.default.accept_dad=0
+	run_in_host_netns ip link set lo up
+	run_in_host_netns ip link add test type bridge
+	run_in_host_netns ip link set test up
+	run_in_host_netns ip -j addr
+	link_local_addr=$(jq -r '.[] | select(.ifname=="test").addr_info.[0].local' <<<"$output")
+
+	# update our fake netns resolv.conf with the link local address as only nameserver
+	echo "nameserver $link_local_addr%test" >"$AARDVARK_TMPDIR/resolv.conf"
+	run_in_host_netns mount --bind "$AARDVARK_TMPDIR/resolv.conf" /etc/resolv.conf
+
+	# launch dnsmasq to run a second local server with a unique name so we know custom_dns_server works
+	run_in_host_netns dnsmasq --conf-file=/dev/null --pid-file="$AARDVARK_TMPDIR/dnsmasq2.pid" \
+		--except-interface=lo --listen-address="$link_local_addr" --bind-interfaces  \
+		--address=/unique-name.local/192.168.0.1 --no-resolv --no-hosts
+	HELPER_PID=$(cat $AARDVARK_TMPDIR/dnsmasq2.pid)
+
+	subnet_a=$(random_subnet 5)
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
+
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+	run_in_container_netns "$a1_pid" "dig" "aone" "@$gw"
+	# check for TTL 0 here as well
+	assert "$output" =~ "aone\.[[:space:]]*0[[:space:]]*IN[[:space:]]*A[[:space:]]*$ip_a1"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "unique-name.local" "@$gw"
+	# validate that we get the right ip
+	assert "$output" == "192.168.0.1"
+	# Set recursion bit is already set if requested so output must not
+	# contain unexpected warning.
+	assert "$output" !~ "WARNING: recursion requested but not available"
+}

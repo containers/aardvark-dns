@@ -2,6 +2,7 @@ use crate::backend::DNSBackend;
 use crate::config::constants::AARDVARK_PID_FILE;
 use crate::config::parse_configs;
 use crate::dns::coredns::CoreDns;
+use crate::dns::coredns::DNS_PORT;
 use crate::error::AardvarkError;
 use crate::error::AardvarkErrorList;
 use crate::error::AardvarkResult;
@@ -17,10 +18,7 @@ use std::fs;
 use std::fs::OpenOptions;
 use std::hash::Hash;
 use std::io::Error;
-use std::net::IpAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
@@ -125,7 +123,7 @@ async fn stop_and_start_threads<Ip>(
     listen_ips: HashMap<String, Vec<Ip>>,
     thread_handles: &mut ThreadHandleMap<Ip>,
     no_proxy: bool,
-    nameservers: Arc<Mutex<Vec<IpAddr>>>,
+    nameservers: Arc<Mutex<Vec<SocketAddr>>>,
 ) -> AardvarkResult<()>
 where
     Ip: Eq + Hash + Copy + Into<IpAddr> + Send + 'static,
@@ -247,7 +245,7 @@ async fn start_dns_server(
     backend: &'static ArcSwap<DNSBackend>,
     rx: flume::Receiver<()>,
     no_proxy: bool,
-    nameservers: Arc<Mutex<Vec<IpAddr>>>,
+    nameservers: Arc<Mutex<Vec<SocketAddr>>>,
 ) -> AardvarkResult<()> {
     let server = CoreDns::new(name, backend, rx, no_proxy, nameservers);
     server
@@ -262,7 +260,7 @@ async fn read_config_and_spawn(
     filter_search_domain: &str,
     handles_v4: &mut ThreadHandleMap<Ipv4Addr>,
     handles_v6: &mut ThreadHandleMap<Ipv6Addr>,
-    nameservers: Arc<Mutex<Vec<IpAddr>>>,
+    nameservers: Arc<Mutex<Vec<SocketAddr>>>,
     no_proxy: bool,
 ) -> AardvarkResult<()> {
     let (conf, listen_ip_v4, listen_ip_v6) =
@@ -373,7 +371,7 @@ fn daemonize() -> Result<(), Error> {
 }
 
 // read /etc/resolv.conf and return all nameservers
-fn get_upstream_resolvers() -> AardvarkResult<Vec<IpAddr>> {
+fn get_upstream_resolvers() -> AardvarkResult<Vec<SocketAddr>> {
     let mut f = File::open("/etc/resolv.conf").wrap("open resolv.conf")?;
     let mut buf = String::with_capacity(4096);
     f.read_to_string(&mut buf).wrap("read resolv.conf")?;
@@ -381,8 +379,8 @@ fn get_upstream_resolvers() -> AardvarkResult<Vec<IpAddr>> {
     parse_resolv_conf(&buf)
 }
 
-fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
-    let mut nameservers: Vec<IpAddr> = Vec::new();
+fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<SocketAddr>> {
+    let mut nameservers = Vec::new();
     for line in content.split('\n') {
         // split of comments
         let line = match line.split_once(['#', ';']) {
@@ -395,11 +393,41 @@ fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
                 if first == "nameserver" {
                     if let Some(ip) = line_parts.next() {
                         // split of zone, we do not support the link local zone currently with ipv6 addresses
-                        let ip = match ip.split_once("%s") {
-                            Some((f, _)) => f,
+                        let mut scope = None;
+                        let ip = match ip.split_once("%") {
+                            Some((ip, scope_name)) => {
+                                // allow both interface names or static ids
+                                let id = match scope_name.parse() {
+                                    Ok(id) => id,
+                                    Err(_) => nix::net::if_::if_nametoindex(scope_name)
+                                        .wrap("resolve scope id")?,
+                                };
+
+                                scope = Some(id);
+                                ip
+                            }
                             None => ip,
                         };
-                        nameservers.push(ip.parse().wrap(ip)?);
+                        let ip = ip.parse().wrap(ip)?;
+
+                        let addr = match ip {
+                            IpAddr::V4(ip) => {
+                                if scope.is_some() {
+                                    return Err(AardvarkError::msg(
+                                        "scope id not supported for ipv4 address",
+                                    ));
+                                }
+                                SocketAddr::V4(SocketAddrV4::new(ip, DNS_PORT))
+                            }
+                            IpAddr::V6(ip) => SocketAddr::V6(SocketAddrV6::new(
+                                ip,
+                                DNS_PORT,
+                                0,
+                                scope.unwrap_or(0),
+                            )),
+                        };
+
+                        nameservers.push(addr);
                     }
                 }
             }
@@ -416,9 +444,28 @@ fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<IpAddr>> {
 mod tests {
     use super::*;
 
-    const IP_1_1_1_1: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-    const IP_1_1_1_2: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 2));
-    const IP_1_1_1_3: IpAddr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 3));
+    const IP_1_1_1_1: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 1, 1, 1), DNS_PORT));
+    const IP_1_1_1_2: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 1, 1, 2), DNS_PORT));
+    const IP_1_1_1_3: SocketAddr =
+        SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(1, 1, 1, 3), DNS_PORT));
+
+    /// fdfd:733b:dc3:220b::2
+    const IP_FDFD_733B_DC3_220B_2: SocketAddr = SocketAddr::V6(SocketAddrV6::new(
+        Ipv6Addr::new(0xfdfd, 0x733b, 0xdc3, 0x220b, 0, 0, 0, 2),
+        DNS_PORT,
+        0,
+        0,
+    ));
+
+    /// fe80::1%lo
+    const IP_FE80_1: SocketAddr = SocketAddr::V6(SocketAddrV6::new(
+        Ipv6Addr::new(0xfe80, 0, 0, 0, 0, 0, 0, 1),
+        DNS_PORT,
+        0,
+        1,
+    ));
 
     #[test]
     fn test_parse_resolv_conf() {
@@ -491,5 +538,37 @@ nameserver 1.2.3.4",
     #[test]
     fn test_parse_resolv_conf_with_invalid_ip() {
         parse_resolv_conf("nameserver abc").expect_err("invalid ip must error");
+    }
+
+    #[test]
+    fn test_parse_resolv_ipv6() {
+        let res = parse_resolv_conf(
+            "nameserver fdfd:733b:dc3:220b::2
+nameserver 1.1.1.2",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_FDFD_733B_DC3_220B_2, IP_1_1_1_2]);
+    }
+
+    #[test]
+    fn test_parse_resolv_ipv6_link_local_zone() {
+        // Using lo here because we know that will always be id 1 and we
+        // cannot assume any other interface name here.
+        let res = parse_resolv_conf(
+            "nameserver fe80::1%lo
+",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_FE80_1]);
+    }
+
+    #[test]
+    fn test_parse_resolv_ipv6_link_local_zone_id() {
+        let res = parse_resolv_conf(
+            "nameserver fe80::1%1
+",
+        )
+        .expect("failed to parse");
+        assert_eq!(res, vec![IP_FE80_1]);
     }
 }
