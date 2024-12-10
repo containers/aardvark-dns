@@ -11,6 +11,7 @@ homepage = "https://github.com/containers/aardvark-dns"
 repository = "https://github.com/containers/aardvark-dns"
 categories = ["virtualization"]
 exclude = ["/.cirrus.yml", "/.github/*"]
+rust-version = "1.76"
 
 [package.metadata.vendor-filter]
 # This list is not exhaustive.
