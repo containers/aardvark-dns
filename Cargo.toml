@@ -30,11 +30,11 @@ hickory-server = "0.24.1"
 hickory-proto = { version = "0.24.1", features = ["tokio-runtime"] }
 hickory-client = "0.24.1"
 futures-util = { version = "0.3.31", default-features = false }
-tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1.42.0", features = ["macros", "rt-multi-thread", "net", "signal"] }
 nix = { version = "0.29.0", features = ["fs", "signal", "net"] }
-libc = "0.2.167"
+libc = "0.2.168"
 arc-swap = "1.7.1"
 flume = "0.11.1"
 
 [build-dependencies]
-chrono = "0.4.38"
+chrono = "0.4.39"
