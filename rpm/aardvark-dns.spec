@@ -10,6 +10,12 @@
 %global debug_package %{nil}
 %endif
 
+# Adjust/Remove after epel10 gets bats
+# Ref: https://bugzilla.redhat.com/show_bug.cgi?id=2329315
+%if %{defined fedora} || %{defined rhel} && 0%{?rhel} == 9
+%define bats_ofc 1
+%endif
+
 Name: aardvark-dns
 %if %{defined copr_username}
 Epoch: 102
@@ -53,6 +59,31 @@ BuildRequires: rust-srpm-macros
 Forwards other request to configured resolvers.
 Read more about configuration in `src/backend/mod.rs`.
 
+# Only intended to be used for gating tests
+# End user usecases not supported
+%package tests
+Summary: Tests for %{name}
+
+Requires: %{name} = %{epoch}:%{version}-%{release}
+%if %{defined bats_ofc}
+Requires: bats
+%else
+Recommends: bats
+%endif
+Requires: bind-utils
+Requires: iptables
+Requires: jq
+Requires: make
+Requires: netavark
+Requires: nftables
+Requires: nmap-ncat
+Requires: dnsmasq
+
+%description tests
+%{summary}
+
+This package contains system tests for %{name}
+
 %prep
 %autosetup -Sgit %{name}-%{version}
 # Following steps are only required on environments like koji which have no
@@ -78,6 +109,10 @@ tar fx %{SOURCE1}
 %install
 %{__make} DESTDIR=%{buildroot} PREFIX=%{_prefix} install
 
+%{__install} -d -p %{buildroot}%{_datadir}/%{name}/test
+%{__cp} -rp test/* %{buildroot}%{_datadir}/%{name}/test/
+%{__rm} -rf %{buildroot}%{_datadir}/%{name}/test/tmt/    
+
 %files
 %license LICENSE
 %if (0%{?fedora} || 0%{?rhel} >= 10) && !%{defined copr_username}
@@ -86,6 +121,9 @@ tar fx %{SOURCE1}
 %endif
 %dir %{_libexecdir}/podman
 %{_libexecdir}/podman/%{name}
+
+%files tests
+%{_datadir}/%{name}/test
 
 %changelog
 %autochangelog
