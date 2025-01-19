@@ -35,6 +35,9 @@ nix = { version = "0.29.0", features = ["fs", "signal", "net"] }
 libc = "0.2.169"
 arc-swap = "1.7.1"
 flume = "0.11.1"
+netavark = "1.13.1"
+netlink-packet-route = "0.21.0"
+socket2 = "0.5.8"
 
 [build-dependencies]
 chrono = "0.4.39"

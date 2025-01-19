@@ -7,6 +7,8 @@ use crate::error::AardvarkError;
 use crate::error::AardvarkErrorList;
 use crate::error::AardvarkResult;
 use crate::error::AardvarkWrap;
+use crate::utils::get_ip_vrf;
+use socket2::{Socket, Domain, Type};
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
 use nix::unistd;
@@ -24,7 +26,7 @@ use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::OnceLock;
-use tokio::net::{TcpListener, UdpSocket};
+use tokio::net::{TcpListener, UdpSocket, TcpSocket};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 
@@ -159,19 +161,114 @@ where
         let network_name_ = network_name.clone();
         let ns = nameservers.clone();
         let addr = SocketAddr::new(ip.into(), port);
-        let udp_sock = match UdpSocket::bind(addr).await {
+
+        let vrf_name = get_ip_vrf(ip.into());
+
+        let udp_raw_socket = match Socket::new(Domain::IPV4, Type::DGRAM, None) {
             Ok(s) => s,
             Err(err) => {
                 errors.push(AardvarkError::wrap(
-                    format!("failed to bind udp listener on {addr}"),
+                    format!("failed to create udp socket"),
                     err.into(),
                 ));
                 continue;
             }
         };
 
-        let tcp_sock = match TcpListener::bind(addr).await {
+        if vrf_name.is_some() {
+            match udp_raw_socket.bind_device(Some(vrf_name.clone().unwrap().as_mut().as_bytes())) {
+                Ok(_) => {},
+                Err(err) => {
+                    errors.push(AardvarkError::wrap(
+                        format!("failed to bind udp socket to vrf"),
+                        err.into(),
+                ));
+                continue;
+            }
+            }
+        }
+        
+        match udp_raw_socket.set_nonblocking(true) {
+            Ok(_) => {},
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to set udp socket non blocking"),
+                    err.into(),
+                ));
+                continue;
+            }
+        }
+
+        match udp_raw_socket.set_reuse_address(true) {
+            Ok(_) => {},
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to set UDP socket as reusable"),
+                    err.into(),
+            ));
+            continue;
+            }
+        };
+
+        match udp_raw_socket.bind(&addr.into()){
+            Ok(_) => {},
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to bind udp socket on {addr}"),
+                    err.into(),
+                ));
+                continue;
+            }
+        }
+
+        let udp_sock = match UdpSocket::from_std(udp_raw_socket.into()) {
             Ok(s) => s,
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to convert std socket to tokio socket"),
+                    err.into(),
+                ));
+                continue;
+            }
+        };
+
+        let socket_creator_tcp = match TcpSocket::new_v4(){
+            Ok(s) => s,
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to create TCP socket"),
+                    err.into(),
+                ));
+                continue;
+            }
+        };
+
+        if vrf_name.is_some() {
+            match socket_creator_tcp.bind_device(Some(vrf_name.clone().unwrap().as_mut().as_bytes())){
+                Ok(_) => {},
+                Err(err) => {
+                    errors.push(AardvarkError::wrap(
+                        format!("failed to bind TCP socket to vrf"),
+                        err.into(),
+                ));
+                continue;
+                }
+            };
+        }
+        
+        match socket_creator_tcp.set_reuseaddr(true) {
+            Ok(_) => {},
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to set TCP socket as reusable"),
+                    err.into(),
+            ));
+            continue;
+            }
+        };
+
+        match socket_creator_tcp.bind(addr) {
+            Ok(_) => {},
             Err(err) => {
                 errors.push(AardvarkError::wrap(
                     format!("failed to bind tcp listener on {addr}"),
@@ -179,7 +276,20 @@ where
                 ));
                 continue;
             }
+        }
+      
+        let tcp_sock = match  socket_creator_tcp.listen(1024) {
+            Ok(s) => s,
+            Err(err) => {
+                errors.push(AardvarkError::wrap(
+                    format!("failed to call listen on tcp socket for {addr}"),
+                    err.into(),
+                ));
+                continue;
+            }
         };
+
+        
 
         let handle = tokio::spawn(async move {
             start_dns_server(
