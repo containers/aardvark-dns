@@ -78,6 +78,10 @@ tar fx %{SOURCE1}
 %install
 %{__make} DESTDIR=%{buildroot} PREFIX=%{_prefix} install
 
+# Add empty check section to silence rpmlint warning.
+# No tests meant to be run here.
+%check
+
 %files
 %license LICENSE
 %if (0%{?fedora} || 0%{?rhel} >= 10) && !%{defined copr_username}
