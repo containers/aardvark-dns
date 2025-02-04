@@ -456,11 +456,7 @@ fn reply_ip<'a>(
     req: &'a mut Message,
 ) -> Option<&'a Message> {
     // attempt intra network resolution
-    let resolved_ip_list = match backend.lookup(&src_address.ip(), network_name, name) {
-        // If we go success from backend lookup
-        Some(ips) => ips,
-        None => return None,
-    };
+    let resolved_ip_list = backend.lookup(&src_address.ip(), network_name, name)?;
 
     if record_type == RecordType::A {
         for record_addr in resolved_ip_list {

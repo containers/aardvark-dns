@@ -163,10 +163,7 @@ impl DNSBackend {
 
     /// Return a single name resolved via mapping if it exists.
     pub fn reverse_lookup(&self, requester: &IpAddr, lookup_ip: &IpAddr) -> Option<&Vec<String>> {
-        let nets = match self.ip_mappings.get(requester) {
-            Some(n) => n,
-            None => return None,
-        };
+        let nets = self.ip_mappings.get(requester)?;
 
         for ips in nets.iter().filter_map(|v| self.reverse_mappings.get(v)) {
             if let Some(names) = ips.get(lookup_ip) {
