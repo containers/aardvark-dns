@@ -10,9 +10,6 @@ AARDVARK=${AARDVARK:-$TESTSDIR/../bin/aardvark-dns}
 # export RUST_BACKTRACE so that we get a helpful stack trace
 export RUST_BACKTRACE=full
 
-# FIXME current 6.11.4 f40 kernel is broken and cannot use iptables with ipv6
-export NETAVARK_FW=nftables
-
 TEST_DOMAIN=example.podman.io
 
 HOST_NS_PID=
