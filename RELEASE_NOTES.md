@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.14.0
+
+* Dependency updates.
+
 ## v1.13.1
 
 * Fix parsing of ipv6 link local addresses in resolv.conf ([#535](https://github.com/containers/aardvark-dns/issues/535))
