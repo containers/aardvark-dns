@@ -1,5 +1,13 @@
 # Release Notes
 
+## v1.14.0
+
+* Dependency updates.
+
+## v1.13.1
+
+* Fix parsing of ipv6 link local addresses in resolv.conf ([#535](https://github.com/containers/aardvark-dns/issues/535))
+
 ## v1.13.0
 
 * Set TTL to 0 for container names
@@ -24,7 +32,7 @@
 
 ## v1.11.0
 * Do not allow "internal" networks to access DNS
-* On SIGHUP, stop AV threads no longer needed and reload in memory those that are 
+* On SIGHUP, stop AV threads no longer needed and reload in memory those that are
 * updated dependencies
 
 ## v1.10.0
