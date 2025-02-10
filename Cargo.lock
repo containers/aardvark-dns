@@ -388,9 +388,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hickory-client"
-version = "0.24.2"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "949d2fef0bbdd31a0f6affc6bf390b4a0017492903eff6f7516cb382d9e85536"
+checksum = "2ea0169f8b21726527197c7190e5a23b7fd514a3e04f99c571e05631e1f8a9c8"
 dependencies = [
  "cfg-if",
  "data-encoding",
@@ -407,9 +407,9 @@ dependencies = [
 
 [[package]]
 name = "hickory-proto"
-version = "0.24.2"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "447afdcdb8afb9d0a852af6dc65d9b285ce720ed7a59e42a8bf2e931c67bc1b5"
+checksum = "2ad3d6d98c648ed628df039541a5577bee1a7c83e9e16fe3dbedeea4cdfeb971"
 dependencies = [
  "async-trait",
  "cfg-if",
@@ -431,9 +431,9 @@ dependencies = [
 
 [[package]]
 name = "hickory-server"
-version = "0.24.2"
+version = "0.24.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35e6d1c2df0614595224b32479c72dd6fc82c9bda85962907c45fdb95a691489"
+checksum = "7b75179158e7267618f0a587d2337f05e9d71ab3cb03ac2bde2ea5969bc65695"
 dependencies = [
  "async-trait",
  "bytes",
