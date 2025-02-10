@@ -26,9 +26,9 @@ platforms = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "powerpc64
 clap = { version = "~4.5.28", features = ["derive"] }
 syslog = "^7.0.0"
 log = "0.4.25"
-hickory-server = "0.24.2"
-hickory-proto = { version = "0.24.2", features = ["tokio-runtime"] }
-hickory-client = "0.24.2"
+hickory-server = "0.24.3"
+hickory-proto = { version = "0.24.3", features = ["tokio-runtime"] }
+hickory-client = "0.24.3"
 futures-util = { version = "0.3.31", default-features = false }
 tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "net", "signal"] }
 nix = { version = "0.29.0", features = ["fs", "signal", "net"] }
