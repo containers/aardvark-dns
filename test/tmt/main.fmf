@@ -1,35 +1,26 @@
-# Only common dependencies that are NOT required to run netavark-tests.sh are
-# specified here. Everything else is in netavark-tests.sh.
-require:
-    - bats
-    - bind-utils
-    - cargo
-    - clippy
-    - go-md2man
-    - iptables
-    - jq
-    - make
-    - netavark
-    - nftables
-    - nmap-ncat
-    - rustfmt
-    - dnsmasq
-
-adjust:
-    duration: 10m
-    when: arch == aarch64
-
 /validate:
-    tag: upstream
+    tag: [ no-rpm, validate ]
     summary: Validate test
     test: make -C ../.. validate
+    require:
+        - clippy
+        - rustfmt
 
 /unit:
-    tag: upstream
-    summary: Unit test
+    tag: [ no-rpm, unit ]
+    summary: Unit tests
     test: make -C ../.. unit
+    require:
+        - cargo
 
 /integration:
-    tag: [ upstream, downstream]
+    tag: [ rpm, integration ]
     summary: Integration tests
     test: bash test_integration.sh
+    environment:
+        AARDVARK: /usr/libexec/podman/aardvark-dns
+    require:
+        - aardvark-dns-tests
+    adjust:
+        duration: 10m
+        when: arch == aarch64
