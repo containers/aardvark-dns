@@ -16,6 +16,11 @@ files_to_sync:
   - src: plans/
     dest: plans/
     delete: true
+    mkpath: true
+  - src: test/tmt
+    dest: test/tmt
+    delete: true
+    mkpath: true
   - src: .fmf/
     dest: .fmf/
     delete: true
@@ -43,7 +48,7 @@ jobs:
     notifications: &copr_build_failure_notification
       failure_comment:
         message: "Ephemeral COPR build failed. @containers/packit-build please check."
-    targets:
+    targets: &fedora_copr_targets
       - fedora-all-x86_64
       - fedora-all-aarch64
     enable_net: true
@@ -85,29 +90,21 @@ jobs:
     project: podman-next
     enable_net: true
 
-  # Unit tests on Fedora
+  # Tests on Fedora
   - job: tests
     trigger: pull_request
     packages: [aardvark-dns-fedora]
     notifications: &test_failure_notification
       failure_comment:
         message: "Tests failed. @containers/packit-build please check."
-    targets:
-      - fedora-development-x86_64
-      - fedora-development-aarch64
-      - fedora-latest-x86_64
-      - fedora-latest-aarch64
-      - fedora-latest-stable-x86_64
-      - fedora-latest-stable-aarch64
-      - fedora-40-x86_64
-      - fedora-40-aarch64
+    targets: *fedora_copr_targets
     tf_extra_params:
       environments:
         - artifacts:
           - type: repository-file
             id: https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/repo/fedora-$releasever/rhcontainerbot-podman-next-fedora-$releasever.repo
 
-  # Unit tests on CentOS Stream
+  # Tests on CentOS Stream
   - job: tests
     trigger: pull_request
     packages: [aardvark-dns-centos]
@@ -118,8 +115,6 @@ jobs:
         - artifacts:
           - type: repository-file
             id: https://copr.fedorainfracloud.org/coprs/rhcontainerbot/podman-next/repo/centos-stream-$releasever/rhcontainerbot-podman-next-centos-stream-$releasever.repo
-          - type: repository-file
-            id: https://src.fedoraproject.org/rpms/epel-release/raw/epel$releasever/f/epel.repo
 
   # Sync to Fedora
   - job: propose_downstream
