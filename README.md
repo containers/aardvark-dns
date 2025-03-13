@@ -48,3 +48,7 @@ RUST_LOG=trace ./bin/aardvark-dns --config src/test/config/podman/ --port 5533 r
 ```
 
 ### [Configuration file format](./config.md)
+
+### [Contributing](https://github.com/containers/common/blob/main/CONTRIBUTING.md)
+
+Learn [here](https://github.com/containers/common/blob/main/CONTRIBUTING.md) how to contribute to the Containers Group Projects.
