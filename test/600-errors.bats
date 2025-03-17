@@ -17,7 +17,7 @@ function teardown() {
 @test "aardvark-dns should fail when udp port is already bound" {
 	# bind the port to force a failure for aardvark-dns
 	# we cannot use run_is_host_netns to run in the background
-	nsenter -m -n -t $HOST_NS_PID nc -u -l 0.0.0.0 53 </dev/null 3> /dev/null &
+	nsenter -m -n -t $HOST_NS_PID ncat -u -l 0.0.0.0 53 </dev/null 3> /dev/null &
 	NCPID=$!
 
 	# ensure nc has time to bind the port
@@ -33,7 +33,7 @@ function teardown() {
 @test "aardvark-dns should fail when tcp port is already bound" {
 	# bind the port to force a failure for aardvark-dns
 	# we cannot use run_is_host_netns to run in the background
-	nsenter -m -n -t $HOST_NS_PID nc -l 0.0.0.0 53 </dev/null 3> /dev/null &
+	nsenter -m -n -t $HOST_NS_PID ncat -l 0.0.0.0 53 </dev/null 3> /dev/null &
 	NCPID=$!
 
 	# ensure nc has time to bind the port
