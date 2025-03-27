@@ -370,7 +370,7 @@ async fn forward_dns_req(cl: AsyncClient, message: Message) -> Option<Message> {
                 debug!(
                     "{} {} {} {} => {:#?}",
                     id,
-                    answer.name().to_string(),
+                    answer.name(),
                     answer.record_type(),
                     answer.dns_class(),
                     answer.data(),
