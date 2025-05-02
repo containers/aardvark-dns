@@ -9,8 +9,7 @@ use crate::error::AardvarkResult;
 use crate::error::AardvarkWrap;
 use arc_swap::ArcSwap;
 use log::{debug, error, info};
-use nix::unistd;
-use nix::unistd::dup2;
+use nix::unistd::{self, dup2_stderr, dup2_stdin, dup2_stdout};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
@@ -19,7 +18,6 @@ use std::fs::OpenOptions;
 use std::hash::Hash;
 use std::io::Error;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::os::fd::AsRawFd;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -356,17 +354,16 @@ fn daemonize() -> Result<(), Error> {
     // remove any controlling terminals
     // but don't hardstop if this fails
     let _ = unsafe { libc::setsid() }; // check https://docs.rs/libc
-                                       // close fds -> stdout, stdin and stderr
+
     let dev_null = OpenOptions::new()
         .read(true)
         .write(true)
         .open("/dev/null")
         .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {:#}", e)))?;
     // redirect stdout, stdin and stderr to /dev/null
-    let fd = dev_null.as_raw_fd();
-    let _ = dup2(fd, 0);
-    let _ = dup2(fd, 1);
-    let _ = dup2(fd, 2);
+    let _ = dup2_stdin(&dev_null);
+    let _ = dup2_stdout(&dev_null);
+    let _ = dup2_stderr(&dev_null);
     Ok(())
 }
 
