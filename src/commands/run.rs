@@ -4,7 +4,6 @@ use clap::Parser;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult};
 use std::io::Error;
-use std::os::unix::io::AsRawFd;
 
 #[derive(Parser, Debug)]
 pub struct Run {}
@@ -36,10 +35,10 @@ impl Run {
                 // child never sends message because it exited to early...
                 drop(ready_pipe_write);
                 // verify aardvark here and block till will start
-                let i = unistd::read(ready_pipe_read.as_raw_fd(), &mut [0_u8; 1])?;
+                let i = unistd::read(&ready_pipe_read, &mut [0_u8; 1])?;
                 drop(ready_pipe_read);
                 if i == 0 {
-                    // we did not get nay message -> child exited with error
+                    // we did not get any message -> child exited with error
                     Err(std::io::Error::new(
                         std::io::ErrorKind::Other,
                         "Error from child process",
