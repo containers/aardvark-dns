@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.15.0
+
+* Dependency updates.
+
 ## v1.14.0
 
 * Dependency updates.
