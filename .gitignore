@@ -4,3 +4,4 @@ targets/
 *.swp
 netavark.1
 vendor/
+vendor-tarball/

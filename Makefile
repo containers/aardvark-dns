@@ -66,6 +66,7 @@ crate-publish:
 .PHONY: clean
 clean:
 	rm -rf bin
+	rm -rf vendor-tarball
 	if [ "$(CARGO_TARGET_DIR)" = "targets" ]; then rm -rf targets; fi
 	$(MAKE) -C docs clean
 
@@ -120,8 +121,10 @@ validate: $(CARGO_TARGET_DIR)
 vendor-tarball: build install.cargo-vendor-filterer
 	VERSION=$(shell bin/aardvark-dns --version | cut -f2 -d" ") && \
 	$(CARGO) vendor-filterer --format=tar.gz --prefix vendor/ && \
-	mv vendor.tar.gz aardvark-dns-v$$VERSION-vendor.tar.gz && \
-	gzip -c bin/aardvark-dns > aardvark-dns.gz && \
+	mkdir -p vendor-tarball && \
+	mv vendor.tar.gz vendor-tarball/aardvark-dns-v$$VERSION-vendor.tar.gz && \
+	gzip -c bin/aardvark-dns > vendor-tarball/aardvark-dns.gz && \
+	cd vendor-tarball && \
 	sha256sum aardvark-dns.gz aardvark-dns-v$$VERSION-vendor.tar.gz > sha256sum
 
 .PHONY: install.cargo-vendor-filterer
