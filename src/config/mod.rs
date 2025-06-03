@@ -67,12 +67,19 @@ pub fn parse_configs(
                 let parsed_network_config = match parse_config(cfg.path().as_path()) {
                     Ok(c) => c,
                     Err(e) => {
-                        if e.kind() != std::io::ErrorKind::NotFound {
-                            error!(
-                                "Error reading config file {:?} for server update: {}",
-                                cfg.path(),
-                                e
-                            )
+                        match &e {
+                            AardvarkError::IOError(io)
+                                if io.kind() != std::io::ErrorKind::NotFound =>
+                            {
+                                // Do no log the error if the file was removed
+                            }
+                            _ => {
+                                error!(
+                                    "Error reading config file {:?} for server update: {}",
+                                    cfg.path(),
+                                    e
+                                )
+                            }
                         }
                         continue;
                     }
@@ -245,7 +252,7 @@ struct ParsedNetworkConfig {
 }
 
 // Read and parse a single given configuration file
-fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::Error> {
+fn parse_config(path: &std::path::Path) -> AardvarkResult<ParsedNetworkConfig> {
     let content = read_to_string(path)?;
     let mut is_first = true;
 
@@ -261,20 +268,20 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
         if is_first {
             let network_parts = line.split(' ').collect::<Vec<&str>>();
             if network_parts.is_empty() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("invalid network configuration file: {}", path.display()),
-                ));
+                return Err(AardvarkError::msg(format!(
+                    "invalid network configuration file: {}",
+                    path.display()
+                )));
             }
             // process bind ip
             for ip in network_parts[0].split(',') {
                 let local_ip = match ip.parse() {
                     Ok(l) => l,
                     Err(e) => {
-                        return Err(std::io::Error::new(
-                            std::io::ErrorKind::Other,
-                            format!("error parsing ip address {}: {}", ip, e),
-                        ))
+                        return Err(AardvarkError::msg(format!(
+                            "error parsing ip address {}: {}",
+                            ip, e
+                        )))
                     }
                 };
                 bind_addrs.push(local_ip);
@@ -288,10 +295,10 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
                     let local_ip = match ip.parse() {
                         Ok(l) => l,
                         Err(e) => {
-                            return Err(std::io::Error::new(
-                                std::io::ErrorKind::Other,
-                                format!("error parsing network dns address {}: {}", ip, e),
-                            ))
+                            return Err(AardvarkError::msg(format!(
+                                "error parsing network dns address {}: {}",
+                                ip, e
+                            )))
                         }
                     };
                     network_dns_servers.push(local_ip);
@@ -305,24 +312,21 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
         // Split on space
         let parts = line.split(' ').collect::<Vec<&str>>();
         if parts.len() < 4 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "configuration file {} line {} is improperly formatted - too few entries",
-                    path.to_string_lossy(),
-                    line
-                ),
-            ));
+            return Err(AardvarkError::msg(format!(
+                "configuration file {} line {} is improperly formatted - too few entries",
+                path.to_string_lossy(),
+                line
+            )));
         }
 
         let v4_addrs: Option<Vec<Ipv4Addr>> = if !parts[1].is_empty() {
             let ipv4 = match parts[1].split(',').map(|i| i.parse()).collect() {
                 Ok(i) => i,
                 Err(e) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("error parsing IP address {}: {}", parts[1], e),
-                    ))
+                    return Err(AardvarkError::msg(format!(
+                        "error parsing IP address {}: {}",
+                        parts[1], e
+                    )))
                 }
             };
             Some(ipv4)
@@ -334,10 +338,10 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
             let ipv6 = match parts[2].split(',').map(|i| i.parse()).collect() {
                 Ok(i) => i,
                 Err(e) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("error parsing IP address {}: {}", parts[2], e),
-                    ))
+                    return Err(AardvarkError::msg(format!(
+                        "error parsing IP address {}: {}",
+                        parts[2], e
+                    )))
                 }
             };
             Some(ipv6)
@@ -351,24 +355,21 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
             .collect::<Vec<String>>();
 
         if aliases.is_empty() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "configuration file {} line {} is improperly formatted - no names given",
-                    path.to_string_lossy(),
-                    line
-                ),
-            ));
+            return Err(AardvarkError::msg(format!(
+                "configuration file {} line {} is improperly formatted - no names given",
+                path.to_string_lossy(),
+                line
+            )));
         }
 
         let dns_servers: Option<Vec<IpAddr>> = if parts.len() == 5 && !parts[4].is_empty() {
             let dns_server = match parts[4].split(',').map(|i| i.parse()).collect() {
                 Ok(i) => i,
                 Err(e) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("error parsing DNS server address {}: {}", parts[4], e),
-                    ))
+                    return Err(AardvarkError::msg(format!(
+                        "error parsing DNS server address {}: {}",
+                        parts[4], e
+                    )))
                 }
             };
             Some(dns_server)
@@ -387,13 +388,10 @@ fn parse_config(path: &std::path::Path) -> Result<ParsedNetworkConfig, std::io::
 
     // Must provide at least one bind address
     if bind_addrs.is_empty() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            format!(
-                "configuration file {} does not provide any bind addresses",
-                path.to_string_lossy()
-            ),
-        ));
+        return Err(AardvarkError::msg(format!(
+            "configuration file {} does not provide any bind addresses",
+            path.to_string_lossy()
+        )));
     }
 
     Ok(ParsedNetworkConfig {
