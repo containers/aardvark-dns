@@ -1,6 +1,5 @@
 use clap::Parser;
 use std::fmt;
-use std::io::Error;
 
 #[derive(Parser, Debug)]
 pub struct Version {}
@@ -30,7 +29,7 @@ impl fmt::Display for Info {
 }
 
 impl Version {
-    pub fn exec(&self) -> Result<(), Error> {
+    pub fn exec(&self) {
         let info = Info {
             version: env!("CARGO_PKG_VERSION"),
             commit: env!("GIT_COMMIT"),
@@ -38,7 +37,5 @@ impl Version {
             target: env!("BUILD_TARGET"),
         };
         println!("{}", info);
-
-        Ok(())
     }
 }
