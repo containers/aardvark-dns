@@ -34,26 +34,26 @@ use std::process;
 type ThreadHandleMap<Ip> =
     HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<AardvarkResult<()>>)>;
 
-pub fn create_pid(config_path: &str) -> Result<(), std::io::Error> {
+pub fn create_pid(config_path: &str) -> AardvarkResult<()> {
     // before serving write its pid to _config_path so other process can notify
     // aardvark of data change.
     let path = Path::new(config_path).join(AARDVARK_PID_FILE);
     let mut pid_file = match File::create(path) {
         Err(err) => {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("Unable to get process pid: {}", err),
-            ));
+            return Err(AardvarkError::msg(format!(
+                "Unable to get process pid: {}",
+                err
+            )));
         }
         Ok(file) => file,
     };
 
     let server_pid = process::id().to_string();
     if let Err(err) = pid_file.write_all(server_pid.as_bytes()) {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            format!("Unable to write pid to file: {}", err),
-        ));
+        return Err(AardvarkError::msg(format!(
+            "Unable to write pid to file: {}",
+            err
+        )));
     }
 
     Ok(())

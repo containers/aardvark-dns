@@ -1,9 +1,9 @@
 //! Runs the aardvark dns server with provided config
+use crate::error::{AardvarkError, AardvarkResult};
 use crate::server::serve;
 use clap::Parser;
 use nix::unistd;
 use nix::unistd::{fork, ForkResult};
-use std::io::Error;
 
 #[derive(Parser, Debug)]
 pub struct Run {}
@@ -19,7 +19,7 @@ impl Run {
         input_dir: String,
         port: u16,
         filter_search_domain: String,
-    ) -> Result<(), Error> {
+    ) -> AardvarkResult<()> {
         // create a temporary path for unix socket
         // so parent can communicate with child and
         // only exit when child is ready to serve.
@@ -39,10 +39,7 @@ impl Run {
                 drop(ready_pipe_read);
                 if i == 0 {
                     // we did not get any message -> child exited with error
-                    Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Error from child process",
-                    ))
+                    Err(AardvarkError::msg("Error from child process"))
                 } else {
                     Ok(())
                 }
@@ -51,28 +48,25 @@ impl Run {
                 drop(ready_pipe_read);
                 // create aardvark pid and then notify parent
                 if let Err(er) = serve::create_pid(&input_dir) {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error creating aardvark pid {}", er),
-                    ));
+                    return Err(AardvarkError::msg(format!(
+                        "Error creating aardvark pid {}",
+                        er
+                    )));
                 }
 
                 if let Err(er) =
                     serve::serve(&input_dir, port, &filter_search_domain, ready_pipe_write)
                 {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("Error starting server {}", er),
-                    ));
+                    return Err(AardvarkError::msg(format!("Error starting server {}", er)));
                 }
                 Ok(())
             }
             Err(err) => {
                 log::debug!("fork failed with error {}", err);
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    format!("fork failed with error: {}", err),
-                ))
+                Err(AardvarkError::msg(format!(
+                    "fork failed with error: {}",
+                    err
+                )))
             }
         }
     }
