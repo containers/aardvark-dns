@@ -129,8 +129,7 @@ impl CoreDns {
                 }
             }
             Err(_) => debug!(
-                "Tcp connection {} was cancelled after 3s as it took to long to receive message",
-                peer
+                "Tcp connection {peer} was cancelled after 3s as it took to long to receive message"
             ),
         }
     }
@@ -144,7 +143,7 @@ impl CoreDns {
         let msg = match msg_received {
             Ok(msg) => msg,
             Err(e) => {
-                error!("Error parsing dns message {:?}", e);
+                error!("Error parsing dns message {e:?}");
                 return;
             }
         };
@@ -162,8 +161,8 @@ impl CoreDns {
 
         // Create debug and trace info for key parameters.
         trace!("server network name: {:?}", data.network_name);
-        debug!("request source address: {:?}", src_address);
-        trace!("requested record type: {:?}", record_type);
+        debug!("request source address: {src_address:?}");
+        trace!("requested record type: {record_type:?}");
         debug!(
             "checking if backend has entry for: {:?}",
             &request_name_string
@@ -327,10 +326,10 @@ fn reply(sender: &mut BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message
 
     match sender.send(response) {
         Ok(_) => {
-            debug!("[{}] success reponse", id);
+            debug!("[{id}] success reponse");
         }
         Err(e) => {
-            error!("[{}] fail response: {:?}", id, e);
+            error!("[{id}] fail response: {e:?}");
         }
     }
 
@@ -358,12 +357,12 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
                 msg.extensions().is_some(),
             );
 
-            debug!("parsed message {:?}", parsed_msg);
+            debug!("parsed message {parsed_msg:?}");
 
             Some((name, record_type, msg))
         }
         Err(e) => {
-            warn!("Failed while parsing message: {}", e);
+            warn!("Failed while parsing message: {e}");
             None
         }
     }
@@ -390,11 +389,11 @@ async fn forward_dns_req(cl: Client, message: Message) -> Option<Message> {
             Some(response_message)
         }
         Ok(None) => {
-            error!("{} dns request got empty response", id);
+            error!("{id} dns request got empty response");
             None
         }
         Err(e) => {
-            error!("{} dns request failed: {}", id, e);
+            error!("{id} dns request failed: {e}");
             None
         }
     }
@@ -439,7 +438,7 @@ fn reply_ptr(
         if let Some(reverse_lookup) = backend.reverse_lookup(&src_address.ip(), &lookup_ip) {
             let mut req_clone = req.clone();
             for entry in reverse_lookup {
-                if let Ok(answer) = Name::from_ascii(format!("{}.", entry)) {
+                if let Ok(answer) = Name::from_ascii(format!("{entry}.")) {
                     let record = Record::<RData>::from_rdata(
                         Name::from_str_relaxed(name).unwrap_or_default(),
                         0,

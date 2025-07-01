@@ -36,6 +36,6 @@ impl Version {
             build_time: env!("BUILD_TIMESTAMP"),
             target: env!("BUILD_TARGET"),
         };
-        println!("{}", info);
+        println!("{info}");
     }
 }

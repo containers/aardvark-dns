@@ -44,7 +44,7 @@ fn main() {
         Ok(val) => match Level::from_str(&val) {
             Ok(level) => level,
             Err(e) => {
-                eprintln!("failed to parse RUST_LOG level: {}", e);
+                eprintln!("failed to parse RUST_LOG level: {e}");
                 Level::Info
             }
         },
@@ -58,7 +58,7 @@ fn main() {
         if let Err(e) = log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
             .map(|()| log::set_max_level(log_level.to_level_filter()))
         {
-            eprintln!("failed to initialize syslog logger: {}", e)
+            eprintln!("failed to initialize syslog logger: {e}")
         };
     }
 
