@@ -30,8 +30,7 @@ pub fn parse_configs(
 )> {
     if !metadata(dir)?.is_dir() {
         return Err(AardvarkError::msg(format!(
-            "config directory {} must exist and be a directory",
-            dir
+            "config directory {dir} must exist and be a directory"
         )));
     }
 
@@ -192,7 +191,7 @@ pub fn parse_configs(
             }
             Err(e) => {
                 if e.kind() != std::io::ErrorKind::NotFound {
-                    error!("Error listing config file for server update: {}", e)
+                    error!("Error listing config file for server update: {e}")
                 }
             }
         }
@@ -211,9 +210,8 @@ pub fn parse_configs(
             }
             None => {
                 return Err(AardvarkError::msg(format!(
-                    "Container ID {} has an entry in IPs table, but not network membership table",
-                    ctr_id
-                )))
+                "Container ID {ctr_id} has an entry in IPs table, but not network membership table"
+            )))
             }
         }
     }
@@ -279,8 +277,7 @@ fn parse_config(path: &std::path::Path) -> AardvarkResult<ParsedNetworkConfig> {
                     Ok(l) => l,
                     Err(e) => {
                         return Err(AardvarkError::msg(format!(
-                            "error parsing ip address {}: {}",
-                            ip, e
+                            "error parsing ip address {ip}: {e}"
                         )))
                     }
                 };
@@ -296,8 +293,7 @@ fn parse_config(path: &std::path::Path) -> AardvarkResult<ParsedNetworkConfig> {
                         Ok(l) => l,
                         Err(e) => {
                             return Err(AardvarkError::msg(format!(
-                                "error parsing network dns address {}: {}",
-                                ip, e
+                                "error parsing network dns address {ip}: {e}"
                             )))
                         }
                     };

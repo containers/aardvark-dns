@@ -26,5 +26,5 @@ fn main() {
         // if error, e.g. build from source with git repo, just show empty string
         Err(_) => "".to_string(),
     };
-    println!("cargo:rustc-env=GIT_COMMIT={}", commit);
+    println!("cargo:rustc-env=GIT_COMMIT={commit}");
 }

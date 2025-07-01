@@ -30,7 +30,7 @@ impl Run {
         // setsid() ensures that there is no controlling terminal on the child process
         match unsafe { fork() } {
             Ok(ForkResult::Parent { child, .. }) => {
-                log::debug!("starting aardvark on a child with pid {}", child);
+                log::debug!("starting aardvark on a child with pid {child}");
                 // close write here to make sure the read does not hang when
                 // child never sends message because it exited to early...
                 drop(ready_pipe_write);
@@ -49,24 +49,20 @@ impl Run {
                 // create aardvark pid and then notify parent
                 if let Err(er) = serve::create_pid(&input_dir) {
                     return Err(AardvarkError::msg(format!(
-                        "Error creating aardvark pid {}",
-                        er
+                        "Error creating aardvark pid {er}"
                     )));
                 }
 
                 if let Err(er) =
                     serve::serve(&input_dir, port, &filter_search_domain, ready_pipe_write)
                 {
-                    return Err(AardvarkError::msg(format!("Error starting server {}", er)));
+                    return Err(AardvarkError::msg(format!("Error starting server {er}")));
                 }
                 Ok(())
             }
             Err(err) => {
-                log::debug!("fork failed with error {}", err);
-                Err(AardvarkError::msg(format!(
-                    "fork failed with error: {}",
-                    err
-                )))
+                log::debug!("fork failed with error {err}");
+                Err(AardvarkError::msg(format!("fork failed with error: {err}")))
             }
         }
     }

@@ -98,7 +98,7 @@ impl DNSBackend {
             let net_names = match self.name_mappings.get(net) {
                 Some(n) => n,
                 None => {
-                    error!("Container with IP {} belongs to network {} but there is no listing in networks table!", requester, net);
+                    error!("Container with IP {requester} belongs to network {net} but there is no listing in networks table!");
                     continue;
                 }
             };

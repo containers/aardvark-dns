@@ -41,8 +41,7 @@ pub fn create_pid(config_path: &str) -> AardvarkResult<()> {
     let mut pid_file = match File::create(path) {
         Err(err) => {
             return Err(AardvarkError::msg(format!(
-                "Unable to get process pid: {}",
-                err
+                "Unable to get process pid: {err}"
             )));
         }
         Ok(file) => file,
@@ -51,8 +50,7 @@ pub fn create_pid(config_path: &str) -> AardvarkResult<()> {
     let server_pid = process::id().to_string();
     if let Err(err) = pid_file.write_all(server_pid.as_bytes()) {
         return Err(AardvarkError::msg(format!(
-            "Unable to write pid to file: {}",
-            err
+            "Unable to write pid to file: {err}"
         )));
     }
 
@@ -227,11 +225,11 @@ async fn stop_threads<Ip>(
                 // result returned by the future, i.e. that actual
                 // result from start_dns_server()
                 if let Err(e) = res {
-                    error!("Error from dns server: {}", e)
+                    error!("Error from dns server: {e}")
                 }
             }
             // error from tokio itself
-            Err(e) => error!("Error from dns server task: {}", e),
+            Err(e) => error!("Error from dns server task: {e}"),
         }
     }
 }
@@ -276,8 +274,8 @@ async fn read_config_and_spawn(
     };
 
     debug!("Successfully parsed config");
-    debug!("Listen v4 ip {:?}", listen_ip_v4);
-    debug!("Listen v6 ip {:?}", listen_ip_v6);
+    debug!("Listen v4 ip {listen_ip_v4:?}");
+    debug!("Listen v6 ip {listen_ip_v6:?}");
 
     // kill server if listen_ip's are empty
     if listen_ip_v4.is_empty() && listen_ip_v6.is_empty() {
@@ -359,7 +357,7 @@ fn daemonize() -> Result<(), Error> {
         .read(true)
         .write(true)
         .open("/dev/null")
-        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {:#}", e)))?;
+        .map_err(|e| std::io::Error::new(e.kind(), format!("/dev/null: {e:#}")))?;
     // redirect stdout, stdin and stderr to /dev/null
     let _ = dup2_stdin(&dev_null);
     let _ = dup2_stdout(&dev_null);
