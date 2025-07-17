@@ -130,7 +130,7 @@ impl CoreDns {
                 },
                 Err(_) => {
                     debug!(
-                        "Tcp connection {peer} was cancelled after 3s as it took to long to receive message"
+                        "Tcp connection {peer} was cancelled after 3s as it took too long to receive message"
                     );
                     break;
                 }
