@@ -117,20 +117,24 @@ impl CoreDns {
         let (mut hickory_stream, sender_original) =
             TcpStream::from_stream(AsyncIoTokioAsStd(stream), peer);
 
-        // It is possible for a client to keep the tcp socket open forever and never send any data,
-        // we do not want this so add a 3s timeout then we close the socket.
-        match tokio::time::timeout(Duration::from_secs(3), hickory_stream.next()).await {
-            Ok(message) => {
-                if let Some(msg) = message {
-                    Self::process_message(&data, msg, &sender_original, Protocol::Tcp).await;
-                    // The API is a bit strange, first time we call next we get the message,
-                    // but we must call again to send our reply back
-                    hickory_stream.next().await;
+        loop {
+            // It is possible for a client to keep the tcp socket open forever and never send any data,
+            // we do not want this so add a 3s timeout then we close the socket.
+            match tokio::time::timeout(Duration::from_secs(3), hickory_stream.next()).await {
+                Ok(message) => match message {
+                    Some(msg) => {
+                        Self::process_message(&data, msg, &sender_original, Protocol::Tcp).await
+                    }
+                    // end of stream
+                    None => break,
+                },
+                Err(_) => {
+                    debug!(
+                        "Tcp connection {peer} was cancelled after 3s as it took too long to receive message"
+                    );
+                    break;
                 }
             }
-            Err(_) => debug!(
-                "Tcp connection {peer} was cancelled after 3s as it took to long to receive message"
-            ),
         }
     }
 
