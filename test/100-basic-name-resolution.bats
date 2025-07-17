@@ -117,6 +117,12 @@ function teardown() {
 	run_in_container_netns "$a1_pid" "dig" "+tcp" "+short" "aone" "@$gw"
 	assert "$ip_a1"
 
+	# check multiple TCP requests over single connecting by using +keepopen
+	# https://github.com/containers/aardvark-dns/issues/605
+	run_in_container_netns "$a1_pid" "dig" "+tcp" "+short" +keepopen "@$gw" "aone" "a1" "1a"
+	assert "${lines[0]}" == "$ip_a1" "ip for aone"
+	assert "${lines[1]}" == "$ip_a1" "ip for a1"
+	assert "${lines[2]}" == "$ip_a1" "ip for 1a"
 
 	run_in_container_netns "$a1_pid" "dig" "+short" "$TEST_DOMAIN" "@$gw"
 	# validate that we get an ipv4
