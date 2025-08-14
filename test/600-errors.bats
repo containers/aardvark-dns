@@ -6,10 +6,10 @@
 load helpers
 
 
-NCPID=
+SOCAT_PID=
 
 function teardown() {
-    kill -9 $NCPID
+    kill -9 $SOCAT_PID
     basic_teardown
 }
 
@@ -17,10 +17,10 @@ function teardown() {
 @test "aardvark-dns should fail when udp port is already bound" {
 	# bind the port to force a failure for aardvark-dns
 	# we cannot use run_is_host_netns to run in the background
-	nsenter -m -n -t $HOST_NS_PID ncat -u -l 0.0.0.0 53 </dev/null 3> /dev/null &
-	NCPID=$!
+	nsenter -m -n -t $HOST_NS_PID socat UDP4-LISTEN:53 - 3> /dev/null &
+	SOCAT_PID=$!
 
-	# ensure nc has time to bind the port
+	# ensure socat has time to bind the port
 	sleep 1
 
 	subnet_a=$(random_subnet 5)
@@ -33,10 +33,10 @@ function teardown() {
 @test "aardvark-dns should fail when tcp port is already bound" {
 	# bind the port to force a failure for aardvark-dns
 	# we cannot use run_is_host_netns to run in the background
-	nsenter -m -n -t $HOST_NS_PID ncat -l 0.0.0.0 53 </dev/null 3> /dev/null &
-	NCPID=$!
+	nsenter -m -n -t $HOST_NS_PID socat TCP4-LISTEN:53 - 3> /dev/null &
+	SOCAT_PID=$!
 
-	# ensure nc has time to bind the port
+	# ensure socat has time to bind the port
 	sleep 1
 
 	subnet_a=$(random_subnet 5)
