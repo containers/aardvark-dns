@@ -1,5 +1,10 @@
 # Release Notes
 
+## v1.16.0
+
+* Allow more than one DNS message per tcp socket. ([#605](https://github.com/containers/aardvark-dns/issues/605))
+* Dependency updates.
+
 ## v1.15.0
 
 * Dependency updates.
