@@ -61,7 +61,7 @@ Requires: bats
 Requires: bind-utils
 Requires: jq
 Requires: netavark
-Requires: nmap-ncat
+Requires: socat
 Requires: dnsmasq
 
 %description tests
@@ -97,7 +97,7 @@ tar fx %{SOURCE1}
 
 %{__install} -d -p %{buildroot}%{_datadir}/%{name}/test
 %{__cp} -rp test/* %{buildroot}%{_datadir}/%{name}/test/
-%{__rm} -rf %{buildroot}%{_datadir}/%{name}/test/tmt/    
+%{__rm} -rf %{buildroot}%{_datadir}/%{name}/test/tmt/
 
 # Add empty check section to silence rpmlint warning.
 # No tests meant to be run here.
