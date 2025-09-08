@@ -8,6 +8,7 @@ use crate::error::AardvarkErrorList;
 use crate::error::AardvarkResult;
 use crate::error::AardvarkWrap;
 use arc_swap::ArcSwap;
+use log::warn;
 use log::{debug, error, info};
 use nix::unistd::{self, dup2_stderr, dup2_stdin, dup2_stdout};
 use std::collections::HashMap;
@@ -30,6 +31,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
+use inotify::{Inotify, WatchMask};
 
 type ThreadHandleMap<Ip> =
     HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<AardvarkResult<()>>)>;
@@ -176,7 +178,7 @@ where
                 continue;
             }
         };
-
+        tokio::spawn(monitor_upstream_resolvers(nameservers.clone()));
         let handle = tokio::spawn(async move {
             start_dns_server(
                 network_name_,
@@ -433,6 +435,50 @@ fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<SocketAddr>> {
     // we do not have time to try many nameservers anyway so only use the first three
     nameservers.truncate(3);
     Ok(nameservers)
+}
+
+async fn monitor_upstream_resolvers(nameservers: Arc<Mutex<Vec<SocketAddr>>>) {
+    let mut inotify = match Inotify::init() {
+        Ok(inotify) => inotify,
+        Err(err) => {
+            error!("Failed to initialize inotify: {err}");
+            warn!("Nameservers will not be updated on resolv.conf change");
+            return;
+        }
+    };
+    if let Err(err) = inotify
+        .watches()
+        .add(
+            "/etc/resolv.conf",
+            WatchMask::MODIFY,
+        ) {
+        error!("Failed to add watch on /etc/resolv.conf: {err}");
+        warn!("Nameservers will not be updated on resolv.conf change");
+        return;
+    }
+        let mut buffer = [0; 1024];
+        loop{
+            let events = match inotify.read_events_blocking(&mut buffer) {
+                Ok(events) => events,
+                Err(err) => {
+                    error!("Error while reading inotify event: {err}");
+                    continue;
+                }
+            };
+
+            for _ in events {
+                let upstream_resolvers = match get_upstream_resolvers() {
+                    Ok(ns) => ns,
+                    Err(err) => {
+                        error!("Failed to reload nameservers on change: {err}");
+                        continue;
+                    }
+                };
+                {
+                    *nameservers.lock().expect("lock nameservers") = upstream_resolvers;
+                }
+            }
+        }
 }
 
 #[cfg(test)]
