@@ -329,3 +329,45 @@ function teardown() {
 	# contain unexpected warning.
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
+
+@test "nameservers updated when resolv.conf is modified" {
+	setup_dnsmasq
+
+	# Set up second dnsmasq server with different IP
+	run_in_host_netns dnsmasq --conf-file=/dev/null --pid-file="$AARDVARK_TMPDIR/dnsmasq_second.pid" \
+		--except-interface=lo --listen-address=127.1.1.2 --bind-interfaces \
+		--address=/second-server.test/192.168.100.2 --no-resolv --no-hosts
+	HELPER_PID=$(cat $AARDVARK_TMPDIR/dnsmasq_second.pid)
+
+	subnet_a=$(random_subnet 5)
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
+	config_a1=$config
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+
+	# Resolve using the first DNS server
+	run_in_container_netns "$a1_pid" "dig" "+short" "testname" "@$gw"
+	assert "$output" == "198.51.100.1" "should resolve using first DNS server"
+
+	# Cannot resolve second server's domain yet
+	expected_rc=1 run_in_container_netns "$a1_pid" "host" "-t" "a" "second-server.test" "$gw"
+	assert "$output" =~ "not found" "should not resolve second server's domain initially"
+
+	# Update resolv.conf to point to second DNS server
+    echo "nameserver 127.1.1.2" > "$AARDVARK_TMPDIR/resolv.conf"
+
+	retries=20
+	while [[ $retries -gt 0 ]]; do
+		expected_rc="?" run_in_container_netns "$a1_pid" "host" "-t" "a" "second-server.test" "$gw"
+		if [[ $status -eq 0 ]]; then
+			break
+		fi
+		sleep 0.5
+		retries=$((retries -1))
+	done
+
+	# Resolve using the second DNS server
+	run_in_container_netns "$a1_pid" "dig" "+short" "second-server.test" "@$gw"
+	assert "$output" == "192.168.100.2" "should resolve using second DNS server after resolv.conf change"
+}

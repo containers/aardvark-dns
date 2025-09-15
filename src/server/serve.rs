@@ -26,10 +26,14 @@ use tokio::net::{TcpListener, UdpSocket};
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::task::JoinHandle;
 
+use futures::StreamExt;
+use inotify::{EventStream, Inotify, WatchMask};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::process;
+
+const RESOLV_CONF: &str = "/etc/resolv.conf";
 
 type ThreadHandleMap<Ip> =
     HashMap<(String, Ip), (flume::Sender<()>, JoinHandle<AardvarkResult<()>>)>;
@@ -88,27 +92,47 @@ pub async fn serve(
     unistd::write(&ready, &msg)?;
     drop(ready);
 
+    // Setup inotify to monitor resolv.conf
+    let mut event_stream = get_inotify_event_stream();
     loop {
-        // Block until we receive a SIGHUP.
-        signals.recv().await;
-        debug!("Received SIGHUP");
-        if let Err(e) = read_config_and_spawn(
-            config_path,
-            port,
-            filter_search_domain,
-            &mut handles_v4,
-            &mut handles_v6,
-            nameservers.clone(),
-            no_proxy,
-        )
-        .await
-        {
-            // do not exit here, we just keep running even if something failed
-            error!("{e}");
-        };
+        tokio::select! {
+            // Block until we receive a SIGHUP.
+            _= signals.recv()=>{
+                debug!("Received SIGHUP");
+                if let Err(e) = read_config_and_spawn(
+                    config_path,
+                    port,
+                    filter_search_domain,
+                    &mut handles_v4,
+                    &mut handles_v6,
+                    nameservers.clone(),
+                    no_proxy,
+                )
+                .await
+                {
+                    // do not exit here, we just keep running even if something failed
+                    error!("{e}");
+                };
+            }
+            // Block until resolv.conf is changed, monitored via inotify. Then reload nameservers
+            _ = event_stream.as_mut().unwrap().next(), if event_stream.is_some() => {
+                let upstream_resolvers = match get_upstream_resolvers() {
+                    Ok(ns) => ns,
+                    Err(err) => {
+                        error!("Failed to reload nameservers on change: {err}");
+                        continue;
+                    }
+                };
+                match nameservers.lock() {
+                    Ok(mut ns) => *ns = upstream_resolvers,
+                    Err(err) => {
+                        error!("Failed to reload nameservers, could not obtain lock: {err}");
+                    }
+                }
+            }
+        }
     }
 }
-
 /// # Ensure the expected DNS server threads are running
 ///
 /// Stop threads corresponding to listen IPs no longer in the configuration and start threads
@@ -367,11 +391,37 @@ fn daemonize() -> Result<(), Error> {
 
 // read /etc/resolv.conf and return all nameservers
 fn get_upstream_resolvers() -> AardvarkResult<Vec<SocketAddr>> {
-    let mut f = File::open("/etc/resolv.conf").wrap("open resolv.conf")?;
+    let mut f = File::open(RESOLV_CONF).wrap("open resolv.conf")?;
     let mut buf = String::with_capacity(4096);
     f.read_to_string(&mut buf).wrap("read resolv.conf")?;
 
     parse_resolv_conf(&buf)
+}
+
+fn get_inotify_event_stream() -> Option<EventStream<[u8; 1024]>> {
+    // Min buffer size is 272 (sizeof(struct inotify_event) + NAME_MAX + 1)
+    let buffer = [0; 1024];
+    let inotify = match Inotify::init() {
+        Ok(inotify) => inotify,
+        Err(e) => {
+            error!(
+                "Failed to initialize inotify. Nameservers will not be updated on resolv.conf change: {e}"
+            );
+            return None;
+        }
+    };
+
+    match inotify
+        .watches()
+        .add(RESOLV_CONF, WatchMask::CLOSE_WRITE | WatchMask::MOVED_TO)
+    {
+        Ok(_) => match inotify.into_event_stream(buffer) {
+                Ok(stream) => return Some(stream),
+                Err(e) => error!("Failed to stream inotify events. Nameservers will not be updated on resolv.conf change: {e}"),
+            },
+        Err(e) => error!("Failed to add watch on {RESOLV_CONF}. Nameservers will not be updated on resolv.conf change: {e}"),
+    }
+    None
 }
 
 fn parse_resolv_conf(content: &str) -> AardvarkResult<Vec<SocketAddr>> {
