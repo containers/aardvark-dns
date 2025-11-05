@@ -28,7 +28,7 @@ SUBCOMMANDS:
 
 ### MSRV (Minimum Supported Rust Version)
 
-v1.76
+v1.86
 
 We test that Netavark can be build on this Rust version and on some newer versions.
 All newer versions should also build, and if they do not, the issue should be
