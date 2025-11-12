@@ -1,5 +1,10 @@
 # Release Notes
 
+## v1.17.0
+
+* Aardvark-dns now updates the upstream nameservers from /etc/resolv.conf when the file content changes using inotify. This means a container restart is no longer required to re-read resolv.conf.
+* Dependency updates.
+
 ## v1.16.0
 
 * Allow more than one DNS message per tcp socket. ([#605](https://github.com/containers/aardvark-dns/issues/605))
