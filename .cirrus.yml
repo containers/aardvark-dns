@@ -201,10 +201,13 @@ meta_task:
         EC2IMGNAMES: "$FEDORA_NETAVARK_AMI"
         BUILDID: "${CIRRUS_BUILD_ID}"
         REPOREF: "${CIRRUS_REPO_NAME}"
-        AWSINI: ENCRYPTED[25d8a9c59ca344fc3b6f1f4a1781392ecd31d36c3aee9b8131855e07784bcd4637f25270bf23d0c2a709d17c6fb6e1d0]
         GCPJSON: ENCRYPTED[4c8f37db84c8afb3d67932ebbf1f062e5e7e54b64e9f99624d96d828d2b8677624fb1470a9b12c097e06afeb11fb8c4e]
         GCPNAME: ENCRYPTED[1d96b7a11a12abe142a2e6f5a97ff6cca2bdcbe73724d560d9a2d339b7323b911c814d814057e19932f9d339e9a4c929]
         GCPPROJECT: libpod-218412
+    aws_credentials:
+        role_arn: arn:aws:iam::449134212816:role/imgts-ci-role
+        role_session_name: cirrus
+        region: us-east-1
     clone_script: &noop mkdir -p $CIRRUS_WORKING_DIR  # source not needed
     script: /usr/local/bin/entrypoint.sh
 
