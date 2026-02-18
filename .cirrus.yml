@@ -71,6 +71,7 @@ build_aarch64_task:
     type: $EC2_INST_TYPE
     region: us-east-1
     architecture: arm64  # CAUTION: This has to be "arm64", not aarch64.
+    spot: true
   cargo_cache: &cargo_cache_aarch64
     <<: *cargo_cache
     fingerprint_script: echo -e "cargo_v3_${DEST_BRANCH}_aarch64\n---\n$(<Cargo.lock)\n---\n$(<Cargo.toml)"
