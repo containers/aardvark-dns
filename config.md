@@ -20,7 +20,7 @@ All following lines must contain the dns entries in this format:
 [containerID][space][comma sparated ipv4 list][space][comma separated ipv6 list][space][comma separated dns names][(optional)[space][comma seperated DNS servers]]
 ```
 
-Aardvark-dns will reload all config files when receiving a SIGHUB signal.
+Aardvark-dns will reload all config files when receiving a SIGHUP signal.
 
 
 ## Example
