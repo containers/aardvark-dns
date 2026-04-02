@@ -17,7 +17,6 @@ use hickory_proto::{
     DnsStreamHandle,
 };
 use log::{debug, error, trace, warn};
-use std::io::Error;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -83,15 +82,21 @@ impl CoreDns {
                     break;
                 },
                 v = receiver.next() => {
-                    let msg_received = match v {
-                        Some(value) => value,
+                    let msg = match v {
+                        Some(value) => match value {
+                            Ok(msg) => msg,
+                            Err(e) => {
+                                debug!("Error parsing dns message {e:?}");
+                                continue;
+                            },
+                        },
                         None => {
                             // None received, nothing to process so continue
                             debug!("None recevied from stream, continue the loop");
                             continue;
                         }
                     };
-                    Self::process_message(&self.inner, msg_received, &sender_original, Protocol::Udp).await;
+                    Self::process_message(&self.inner, msg, &sender_original, Protocol::Udp).await;
                 },
                 res = tcp_listener.accept() => {
                     match res {
@@ -122,9 +127,16 @@ impl CoreDns {
             // we do not want this so add a 3s timeout then we close the socket.
             match tokio::time::timeout(Duration::from_secs(3), hickory_stream.next()).await {
                 Ok(message) => match message {
-                    Some(msg) => {
-                        Self::process_message(&data, msg, &sender_original, Protocol::Tcp).await
-                    }
+                    Some(msg_result) => match msg_result {
+                        Ok(msg) => {
+                            Self::process_message(&data, msg, &sender_original, Protocol::Tcp).await
+                        }
+                        Err(e) => {
+                            debug!("Error parsing dns message {e:?}");
+                            // error on that stream, abort so we do not try reusing this one for more messages.
+                            break;
+                        }
+                    },
                     // end of stream
                     None => break,
                 },
@@ -140,17 +152,10 @@ impl CoreDns {
 
     async fn process_message(
         data: &CoreDnsData,
-        msg_received: Result<SerialMessage, Error>,
+        msg: SerialMessage,
         sender_original: &BufDnsStreamHandle,
         proto: Protocol,
     ) {
-        let msg = match msg_received {
-            Ok(msg) => msg,
-            Err(e) => {
-                error!("Error parsing dns message {e:?}");
-                return;
-            }
-        };
         let backend = data.backend.load();
         let src_address = msg.addr();
         let mut sender = sender_original.with_remote_addr(src_address);

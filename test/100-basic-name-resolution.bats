@@ -371,3 +371,29 @@ function teardown() {
 	run_in_container_netns "$a1_pid" "dig" "+short" "second-server.test" "@$gw"
 	assert "$output" == "192.168.100.2" "should resolve using second DNS server after resolv.conf change"
 }
+
+@test "check for incorrect tcp packet" {
+	setup_dnsmasq
+
+	subnet_a=$(random_subnet 5)
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a"
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+
+	# send custom crafted package, first two bytes mean package length 60 but we never send more and close instead
+	run_in_container_netns "$a1_pid" socat - TCP4:$gw:53 <<<$'\x00\x3c'
+
+	# wait a second to meaningful check cpu usage
+	sleep 1
+
+	av_cpu=$(ps -o c --no-headers -p $(<$AARDVARK_TMPDIR/aardvark-dns/aardvark.pid))
+	echo $av_cpu --
+	assert "$av_cpu" -lt 5 "aardvark-dns used to much cpu"
+
+	# ensure dns via tcp still works
+	run_in_container_netns "$a1_pid" "dig" +tcp "+short" "aone" "@$gw"
+	assert "$ip_a1"
+}
