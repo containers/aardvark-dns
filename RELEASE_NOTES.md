@@ -1,5 +1,9 @@
 # Release Notes
 
+## v1.17.1
+
+* This release fixes a security issue (CVE-2026-35406) where tcp connections where not handled correctly when receiving a malformed packet which causes aardvark-dns to enter a infinite loop at 100% cpu usage which can lead to a DOS attack. Versions before v1.16.0 are unaffected.
+
 ## v1.17.0
 
 * Aardvark-dns now updates the upstream nameservers from /etc/resolv.conf when the file content changes using inotify. This means a container restart is no longer required to re-read resolv.conf.
