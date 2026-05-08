@@ -217,7 +217,7 @@ msrv_build_task:
         cpu: 2
         memory: 2
         # When bumping the image always remember to update the README MSRV as well.
-        image: quay.io/libpod/nv-rust:1.86
+        image: quay.io/libpod/nv-rust:1.88
     script:
         - make build
 
