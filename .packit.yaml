@@ -132,6 +132,15 @@ jobs:
       - fedora-latest-x86_64
     tmt_plan: "/plans/unit"
 
+  # MSRV test (no RPM build needed)
+  - job: tests
+    trigger: pull_request
+    identifier: msrv
+    skip_build: true
+    targets:
+      - fedora-latest-x86_64
+    tmt_plan: "/plans/msrv"
+
   # Sync to Fedora
   # NOTE: Breaking changes related to Podman6 will only be shipped to Fedora
   # Rawhide (to be Fedora 45) and newer.

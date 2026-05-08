@@ -26,3 +26,8 @@ prepare:
     summary: Integration tests
     discover+:
         test: /integration
+
+/msrv:
+    summary: MSRV test
+    discover+:
+        test: /msrv
