@@ -10,7 +10,7 @@ description = "A container-focused DNS server"
 homepage = "https://github.com/containers/aardvark-dns"
 repository = "https://github.com/containers/aardvark-dns"
 categories = ["virtualization"]
-exclude = ["/.cirrus.yml", "/.github/*"]
+exclude = ["/.github/*"]
 rust-version = "1.88"
 
 [package.metadata.vendor-filter]
