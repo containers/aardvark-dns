@@ -19,15 +19,17 @@ prepare:
         dnf -y upgrade --allowerasing
       order: 20
 
-/no-rpm:
-    summary: Run tests independent of rpm
+/validate:
+    summary: Validate test
     discover+:
-        filter: tag:no-rpm
-    adjust+:
-        - enabled: false
-          when: initiator is not defined or initiator != packit
+        test: /validate
 
-/rpm:
-    summary: Run tests on the rpm
+/unit:
+    summary: Unit tests
     discover+:
-        filter: tag:rpm
+        test: /unit
+
+/integration:
+    summary: Integration tests
+    discover+:
+        test: /integration

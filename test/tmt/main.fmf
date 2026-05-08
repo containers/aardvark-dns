@@ -1,20 +1,23 @@
 /validate:
-    tag: [ no-rpm, validate ]
     summary: Validate test
     test: make -C ../.. validate
     require:
         - clippy
         - rustfmt
+    adjust:
+        enabled: false
+        when: initiator is not defined or initiator != packit
 
 /unit:
-    tag: [ no-rpm, unit ]
     summary: Unit tests
     test: make -C ../.. unit
     require:
         - cargo
+    adjust:
+        enabled: false
+        when: initiator is not defined or initiator != packit
 
 /integration:
-    tag: [ rpm, integration ]
     summary: Integration tests
     test: bash test_integration.sh
     environment:
