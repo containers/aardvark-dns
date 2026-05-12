@@ -11,7 +11,7 @@ homepage = "https://github.com/containers/aardvark-dns"
 repository = "https://github.com/containers/aardvark-dns"
 categories = ["virtualization"]
 exclude = ["/.cirrus.yml", "/.github/*"]
-rust-version = "1.86"
+rust-version = "1.88"
 
 [package.metadata.vendor-filter]
 # This list is not exhaustive.
@@ -26,9 +26,9 @@ platforms = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu", "powerpc64
 clap = { version = "~4.6.1", features = ["derive"] }
 syslog = "^7.0.0"
 log = "0.4.29"
-hickory-server = "0.25.2"
-hickory-proto = { version = "0.25.2", features = ["tokio"] }
-hickory-client = "0.25.2"
+hickory-server = "0.26.1"
+hickory-proto = { version = "0.26.1" }
+hickory-net = { version = "0.26.1", features = ["tokio"] }
 futures-util = { version = "0.3.32", default-features = false }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "net", "signal"] }
 nix = { version = "0.31.3", features = ["fs", "signal", "net"] }

@@ -4,17 +4,19 @@ use arc_swap::ArcSwap;
 use arc_swap::Guard;
 use futures_util::StreamExt;
 use futures_util::TryStreamExt;
-use hickory_client::{
-    client::Client, proto::rr::rdata, proto::rr::Name, proto::xfer::SerialMessage,
-};
-use hickory_proto::{
-    op::{Message, MessageType, ResponseCode},
-    rr::{RData, Record, RecordType},
+use hickory_net::{
+    client::Client,
+    proto::rr::rdata,
+    proto::rr::Name,
     runtime::{iocompat::AsyncIoTokioAsStd, TokioRuntimeProvider},
     tcp::{TcpClientStream, TcpStream},
     udp::{UdpClientStream, UdpStream},
-    xfer::{dns_handle::DnsHandle, BufDnsStreamHandle, DnsRequest},
+    xfer::{dns_handle::DnsHandle, BufDnsStreamHandle},
     DnsStreamHandle,
+};
+use hickory_proto::{
+    op::{DnsRequest, Message, ResponseCode, SerialMessage},
+    rr::{RData, Record, RecordType},
 };
 use log::{debug, error, trace, warn};
 use std::net::{IpAddr, SocketAddr};
@@ -215,8 +217,8 @@ impl CoreDns {
             || backend.ctr_is_internal(&src_address.ip())
             || request_name_string.ends_with(&backend.search_domain)
         {
-            let mut nx_message = req.clone();
-            nx_message.set_response_code(ResponseCode::NXDomain);
+            let mut nx_message = req.into_response();
+            nx_message.metadata.response_code = ResponseCode::NXDomain;
             reply(&mut sender, src_address, &nx_message);
         } else {
             debug!(
@@ -279,13 +281,7 @@ impl CoreDns {
                     let stream = UdpClientStream::builder(addr, TokioRuntimeProvider::default())
                         .with_timeout(Some(timeout))
                         .build();
-                    let (cl, bg) = match Client::connect(stream).await {
-                        Ok(a) => a,
-                        Err(e) => {
-                            debug!("Failed to connect to {addr}: {e}");
-                            continue;
-                        }
-                    };
+                    let (cl, bg) = Client::<TokioRuntimeProvider>::from_sender(stream);
                     let handle = tokio::spawn(bg);
                     (cl, handle)
                 }
@@ -296,16 +292,18 @@ impl CoreDns {
                         Some(timeout),
                         TokioRuntimeProvider::default(),
                     );
-                    //let (stream, sender) = TcpClientStream::<
-                    //    AsyncIoTokioAsStd<tokio::net::TcpStream>,
-                    //>::with_timeout(addr, timeout);
-                    let (cl, bg) = match Client::with_timeout(stream, sender, timeout, None).await {
+
+                    let stream = match stream.await {
                         Ok(a) => a,
                         Err(e) => {
                             debug!("Failed to connect to {addr}: {e}");
                             continue;
                         }
                     };
+
+                    let (cl, bg) =
+                        Client::<TokioRuntimeProvider>::with_timeout(stream, sender, timeout);
+
                     let handle = tokio::spawn(bg);
                     (cl, handle)
                 }
@@ -324,12 +322,11 @@ impl CoreDns {
 }
 
 fn reply(sender: &mut BufDnsStreamHandle, socket_addr: SocketAddr, msg: &Message) -> Option<()> {
-    let id = msg.id();
-    let mut msg_mut = msg.clone();
-    msg_mut.set_message_type(MessageType::Response);
+    let id = msg.id;
+    let mut msg_mut = msg.clone().into_response();
     // If `RD` is set and `RA` is false set `RA`.
-    if msg.recursion_desired() && !msg.recursion_available() {
-        msg_mut.set_recursion_available(true);
+    if msg.recursion_desired && !msg.recursion_available {
+        msg_mut.metadata.recursion_available = true;
     }
     let response = SerialMessage::new(msg_mut.to_vec().ok()?, socket_addr);
 
@@ -353,8 +350,8 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
 
             let parsed_msg = format!(
                 "[{}] parsed message body: {} edns: {}",
-                msg.id(),
-                msg.queries()
+                msg.id,
+                msg.queries
                     .first()
                     .map(|q| {
                         name = q.name().clone();
@@ -363,7 +360,7 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
                         format!("{} {} {}", q.name(), q.query_type(), q.query_class(),)
                     })
                     .unwrap_or_else(Default::default,),
-                msg.extensions().is_some(),
+                msg.edns.is_some(),
             );
 
             debug!("parsed message {parsed_msg:?}");
@@ -377,24 +374,24 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
     }
 }
 
-async fn forward_dns_req(cl: Client, message: Message) -> Option<Message> {
+async fn forward_dns_req(cl: Client<TokioRuntimeProvider>, message: Message) -> Option<Message> {
     let req = DnsRequest::new(message, Default::default());
-    let id = req.id();
+    let id = req.id;
 
     match cl.send(req).try_next().await {
         Ok(Some(response)) => {
-            for answer in response.answers() {
+            for answer in &response.answers {
                 debug!(
                     "{} {} {} {} => {:#?}",
                     id,
-                    answer.name(),
+                    answer.name,
                     answer.record_type(),
-                    answer.dns_class(),
-                    answer.data(),
+                    answer.dns_class,
+                    answer.data,
                 );
             }
             let mut response_message = response.into_message();
-            response_message.set_id(id);
+            response_message.metadata.id = id;
             Some(response_message)
         }
         Ok(None) => {
