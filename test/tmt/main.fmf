@@ -1,20 +1,23 @@
 /validate:
-    tag: [ no-rpm, validate ]
     summary: Validate test
     test: make -C ../.. validate
     require:
         - clippy
         - rustfmt
+    adjust:
+        enabled: false
+        when: initiator is not defined or initiator != packit
 
 /unit:
-    tag: [ no-rpm, unit ]
     summary: Unit tests
     test: make -C ../.. unit
     require:
         - cargo
+    adjust:
+        enabled: false
+        when: initiator is not defined or initiator != packit
 
 /integration:
-    tag: [ rpm, integration ]
     summary: Integration tests
     test: bash test_integration.sh
     environment:
@@ -24,3 +27,18 @@
     adjust:
         duration: 10m
         when: arch == aarch64
+
+/msrv:
+    summary: Minimum Supported Rust Version (MSRV) check
+    test: |
+        MSRV=$(grep '^rust-version' ../../Cargo.toml | cut -d'"' -f2)
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain "$MSRV"
+        source $HOME/.cargo/env
+        make -C ../.. build
+    require:
+        - curl
+        - gcc
+        - openssl-devel
+    adjust:
+        enabled: false
+        when: initiator is not defined or initiator != packit

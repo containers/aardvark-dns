@@ -4,30 +4,30 @@ execute:
     how: tmt
 prepare:
     - when: distro == centos-stream or distro == rhel
-      how: shell
-      script: |
-        dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-$(rpm --eval '%{?rhel}').noarch.rpm
-        dnf -y config-manager --set-enabled epel
+      how: feature
+      epel: enabled
       order: 10
     - when: initiator == packit
       how: shell
-      script: |
-        COPR_REPO_FILE="/etc/yum.repos.d/*podman-next*.repo"
-        if compgen -G $COPR_REPO_FILE > /dev/null; then
-            sed -i -n '/^priority=/!p;$apriority=1' $COPR_REPO_FILE
-        fi
-        dnf -y upgrade --allowerasing
+      script: bash contrib/tmt/update-deps.sh
       order: 20
 
-/no-rpm:
-    summary: Run tests independent of rpm
+/validate:
+    summary: Validate test
     discover+:
-        filter: tag:no-rpm
-    adjust+:
-        - enabled: false
-          when: initiator is not defined or initiator != packit
+        test: /validate
 
-/rpm:
-    summary: Run tests on the rpm
+/unit:
+    summary: Unit tests
     discover+:
-        filter: tag:rpm
+        test: /unit
+
+/integration:
+    summary: Integration tests
+    discover+:
+        test: /integration
+
+/msrv:
+    summary: MSRV test
+    discover+:
+        test: /msrv
