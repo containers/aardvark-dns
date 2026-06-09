@@ -1,5 +1,12 @@
 # Release Notes
 
+## v2.0.0
+
+Note this is major release to keep the version aligned with netavark. There are no breaking changes in aardvark-dns however.
+
+* The MSRV has been bumped to v1.88.
+* Dependency updates.
+
 ## v1.17.1
 
 * This release fixes a security issue (CVE-2026-35406) where tcp connections where not handled correctly when receiving a malformed packet which causes aardvark-dns to enter a infinite loop at 100% cpu usage which can lead to a DOS attack. Versions before v1.16.0 are unaffected.
