@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aardvark-dns"
-version = "2.0.0-dev"
+version = "2.0.0"
 dependencies = [
  "arc-swap",
  "chrono",
