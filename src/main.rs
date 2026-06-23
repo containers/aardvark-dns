@@ -33,6 +33,9 @@ enum SubCommand {
 }
 
 fn main() {
+    // Close all fds we inherited from our parent process, we only need stdio.
+    let _ = unsafe { libc::close_range(3, libc::c_uint::MAX, 0) };
+
     let formatter = Formatter3164 {
         facility: Facility::LOG_USER,
         hostname: None,
