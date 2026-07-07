@@ -270,11 +270,10 @@ impl CoreDns {
         proto: Protocol,
     ) {
         let mut timeout = DEFAULT_TIMEOUT;
-        // Remember do not divide by 0.
         if !nameservers.is_empty() {
             timeout = Duration::from_secs(5) / nameservers.len() as u32
         }
-        // forward dns request to hosts's /etc/resolv.conf
+        let mut resolved = false;
         for addr in nameservers {
             let (client, handle) = match proto {
                 Protocol::Udp => {
@@ -309,14 +308,20 @@ impl CoreDns {
                 }
             };
 
-            if let Some(resp) = forward_dns_req(client, req.clone()).await {
+            if let Some(resp) = forward_dns_req(client, req.clone(), addr).await {
                 if reply(&mut sender, src_address, &resp).is_some() {
-                    // request resolved from following resolver so
-                    // break and don't try other resolvers
+                    resolved = true;
                     break;
                 }
             }
             handle.abort();
+        }
+
+        if !resolved {
+            error!(
+                "dns request {} failed: all nameservers exhausted",
+                req.id
+            );
         }
     }
 }
@@ -374,7 +379,11 @@ fn parse_dns_msg(body: SerialMessage) -> Option<(Name, RecordType, Message)> {
     }
 }
 
-async fn forward_dns_req(cl: Client<TokioRuntimeProvider>, message: Message) -> Option<Message> {
+async fn forward_dns_req(
+    cl: Client<TokioRuntimeProvider>,
+    message: Message,
+    addr: SocketAddr,
+) -> Option<Message> {
     let req = DnsRequest::new(message, Default::default());
     let id = req.id;
 
@@ -395,11 +404,11 @@ async fn forward_dns_req(cl: Client<TokioRuntimeProvider>, message: Message) -> 
             Some(response_message)
         }
         Ok(None) => {
-            error!("{id} dns request got empty response");
+            debug!("{id} no response from nameserver {addr}");
             None
         }
         Err(e) => {
-            error!("{id} dns request failed: {e}");
+            error!("{id} dns request failed to {addr}: {e}");
             None
         }
     }
