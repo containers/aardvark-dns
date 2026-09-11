@@ -120,8 +120,8 @@ jobs:
     trigger: pull_request
     identifier: validate
     skip_build: true
-    targets:
-      - fedora-latest-x86_64
+    targets: &fedora_validate_targets
+      - fedora-latest-stable-x86_64
     tmt_plan: "/plans/validate"
 
   # Unit tests (no RPM build needed)
@@ -129,8 +129,7 @@ jobs:
     trigger: pull_request
     identifier: unit
     skip_build: true
-    targets:
-      - fedora-latest-x86_64
+    targets: *fedora_validate_targets
     tmt_plan: "/plans/unit"
 
   # MSRV test (no RPM build needed)
@@ -138,8 +137,7 @@ jobs:
     trigger: pull_request
     identifier: msrv
     skip_build: true
-    targets:
-      - fedora-latest-x86_64
+    targets: *fedora_validate_targets
     tmt_plan: "/plans/msrv"
 
   # Sync to Fedora
