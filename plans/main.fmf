@@ -31,3 +31,8 @@ prepare:
     summary: MSRV test
     discover+:
         test: /msrv
+
+/musl:
+    summary: MUSL test
+    discover+:
+        test: /musl
