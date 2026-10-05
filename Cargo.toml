@@ -30,7 +30,7 @@ hickory-server = "0.26.3"
 hickory-proto = { version = "0.26.3" }
 hickory-net = { version = "0.26.3", features = ["tokio"] }
 futures-util = { version = "0.3.34", default-features = false }
-tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "net", "signal"] }
 nix = { version = "0.31.3", features = ["fs", "signal", "net"] }
 libc = "0.2.190"
 arc-swap = "1.9.2"
