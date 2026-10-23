@@ -488,5 +488,7 @@ fn reply_ip<'a>(
             }
         }
     }
+    // Successful backend.lookup above means the name exists. Returning Some
+    // with no answers for this type is NOERROR/NODATA (e.g. AAAA on IPv4-only).
     Some(req)
 }
