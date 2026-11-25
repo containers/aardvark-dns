@@ -237,6 +237,26 @@ function teardown() {
 	assert "$output" !~ "WARNING: recursion requested but not available"
 }
 
+# IPv4-only container: AAAA for a known name must be NOERROR/NODATA, not NXDOMAIN.
+# https://github.com/containers/aardvark-dns/issues/679
+@test "ipv4-only name returns NOERROR for AAAA" {
+	subnet_a=$(random_subnet 5)
+	create_config network_name="podman1" container_id=$(random_string 64) container_name="aone" subnet="$subnet_a" aliases='"a1"'
+	config_a1=$config
+	ip_a1=$(echo "$config_a1" | jq -r .networks.podman1.static_ips[0])
+	gw=$(echo "$config_a1" | jq -r .network_info.podman1.subnets[0].gateway)
+	create_container "$config_a1"
+	a1_pid=$CONTAINER_NS_PID
+
+	run_in_container_netns "$a1_pid" "dig" "+short" "aone" "@$gw" "A"
+	assert "$ip_a1"
+
+	run_in_container_netns "$a1_pid" "dig" "aone" "@$gw" "AAAA"
+	assert "$output" =~ "status: NOERROR" "AAAA for ipv4-only name must be NOERROR/NODATA"
+	assert "$output" =~ "ANSWER: 0" "AAAA answer section must be empty"
+	assert "$output" !~ "status: NXDOMAIN"
+}
+
 # Internal network, meaning no DNS servers.
 # Hence all external requests must fail.
 @test "basic container - internal network has no DNS" {
